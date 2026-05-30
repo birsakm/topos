@@ -1,14 +1,22 @@
-"""Blender-side UV atlas condition bake — phase 1.
+"""Blender-side UV unwrap + condition bake — phase 1.
 
 Invoked via ``blender --background --python _bake_cond.py -- <json>``.
 
 For each part listed in args, this script:
 1. Loads the scene via build.py
 2. Isolates the part (hides others)
-3. UV-unwraps onto a cube-atlas or cylinder-atlas layout
-4. Bakes directional-lit diffuse shading into a light-gray-base image
-5. Saves cond_<part>.png + uv_<part>.json sidecar
+3. UV-unwraps with Blender's Smart UV Project (angle-based, island-packed
+   into [0,1] — the Blender-native analog of xatlas; far better than a
+   hand-rolled cube/cylinder projection for arbitrary geometry)
+4. Bakes directional-lit diffuse shading into a light-gray-base image —
+   the *condition image* the image model paints inside
+5. Saves cond_<part>.png + uv_<part>.json sidecar (per-loop UVs)
 6. Un-isolates for the next part
+
+Phase 3 (``_apply_all.py``) restores the per-loop UVs from the sidecar onto
+the same mesh and binds the painted texture. Smart UV Project only writes
+UVs (it never changes mesh topology), so the per-loop sidecar stays valid
+across the two Blender launches.
 
 Self-contained: no ``topos`` imports. Runs inside Blender's bundled Python.
 """
@@ -22,18 +30,18 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
 
 # ── constants (embedded, no external imports) ────────────────────────────
 
-TILE_W = 1.0 / 3.0
-TILE_H_6 = 1.0 / 2.0
-TILE_H_12 = 1.0 / 4.0
-TILE_MARGIN = 0.03
-
 _UV_LAYER_NAME = "uv_atlas"
 _BAKE_MARGIN_PX = 8
-_ENDCAP_NORMAL_THRESH = 0.7
+
+# Smart UV Project params. angle_limit is in radians (Blender 2.8+);
+# 1.15 rad ≈ 66°, the operator's own default seam angle. island_margin
+# keeps a little gutter between islands so the bake/paint of one island
+# doesn't bleed into its neighbour.
+_SMART_ANGLE_LIMIT = 1.15
+_SMART_ISLAND_MARGIN = 0.02
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -71,159 +79,29 @@ def _unisolate():
             obj.hide_viewport = False
 
 
-def _world_aabb(obj):
-    corners = [obj.matrix_world @ Vector(c) for c in obj.bound_box]
-    xs, ys, zs = zip(*[(v.x, v.y, v.z) for v in corners])
-    lo = Vector((min(xs), min(ys), min(zs)))
-    hi = Vector((max(xs), max(ys), max(zs)))
-    center = (lo + hi) * 0.5
-    extents = hi - lo
-    return center, extents
+# ── Smart UV Project unwrap ──────────────────────────────────────────────
 
-
-# ── cube-atlas UV unwrap ─────────────────────────────────────────────────
-
-CUBE_ATLAS_6 = {
-    (0, -1): (0, 0), (1, -1): (1, 0), (2, -1): (2, 0),
-    (0, +1): (0, 1), (1, +1): (1, 1), (2, +1): (2, 1),
-}
-CUBE_ATLAS_12 = {
-    (0, -1, "outer"): (0, 0), (1, -1, "outer"): (1, 0), (2, -1, "outer"): (2, 0),
-    (0, +1, "outer"): (0, 1), (1, +1, "outer"): (1, 1), (2, +1, "outer"): (2, 1),
-    (0, -1, "inner"): (0, 2), (1, -1, "inner"): (1, 2), (2, -1, "inner"): (2, 2),
-    (0, +1, "inner"): (0, 3), (1, +1, "inner"): (1, 3), (2, +1, "inner"): (2, 3),
-}
-
-
-def _cube_atlas_unwrap(obj, *, dual: bool):
+def _smart_uv_unwrap(obj):
+    """Angle-based unwrap with island packing into [0,1], written to the
+    ``uv_atlas`` layer. Mesh topology is untouched, so the per-loop UV
+    order matches what phase 3 restores."""
     mesh = obj.data
     if _UV_LAYER_NAME in mesh.uv_layers:
         mesh.uv_layers.remove(mesh.uv_layers[_UV_LAYER_NAME])
     uv_layer = mesh.uv_layers.new(name=_UV_LAYER_NAME)
-    uv_data = uv_layer.data
     mesh.uv_layers.active_index = list(mesh.uv_layers).index(uv_layer)
 
-    center, extents = _world_aabb(obj)
-    mw = obj.matrix_world
-    obj_rot = mw.to_3x3()
-
-    tile_h = TILE_H_12 if dual else TILE_H_6
-    inner_w = TILE_W - 2 * TILE_MARGIN
-    inner_h = tile_h - 2 * TILE_MARGIN
-
-    safe_ext = Vector((
-        extents.x if extents.x > 1e-6 else 1.0,
-        extents.y if extents.y > 1e-6 else 1.0,
-        extents.z if extents.z > 1e-6 else 1.0,
-    ))
-
-    def project(axis_i, sign, p_local):
-        nx = p_local.x / safe_ext.x + 0.5
-        ny = p_local.y / safe_ext.y + 0.5
-        nz = p_local.z / safe_ext.z + 0.5
-        if axis_i == 0:
-            u, v = ny, nz
-            if sign < 0:
-                u = 1.0 - u
-        elif axis_i == 1:
-            u, v = nx, nz
-            if sign > 0:
-                u = 1.0 - u
-        else:
-            u, v = nx, ny
-            if sign < 0:
-                v = 1.0 - v
-        return u, v
-
-    for poly in mesh.polygons:
-        n_world = (obj_rot @ poly.normal).normalized()
-        face_center_world = mw @ poly.center
-        face_p_local = face_center_world - center
-
-        if dual:
-            absp = (abs(face_p_local.x), abs(face_p_local.y), abs(face_p_local.z))
-            axis_i = absp.index(max(absp))
-            sign = +1 if face_p_local[axis_i] > 0 else -1
-            side = "outer" if n_world.dot(face_p_local) > 0 else "inner"
-            col, row = CUBE_ATLAS_12[(axis_i, sign, side)]
-        else:
-            absn = (abs(n_world.x), abs(n_world.y), abs(n_world.z))
-            axis_i = absn.index(max(absn))
-            sign = +1 if n_world[axis_i] > 0 else -1
-            col, row = CUBE_ATLAS_6[(axis_i, sign)]
-
-        tile_u0 = col * TILE_W + TILE_MARGIN
-        tile_v0 = row * tile_h + TILE_MARGIN
-
-        for loop_idx in poly.loop_indices:
-            v_idx = mesh.loops[loop_idx].vertex_index
-            v_world = mw @ Vector(mesh.vertices[v_idx].co)
-            p_local = v_world - center
-            u, v = project(axis_i, sign, p_local)
-            uv_data[loop_idx].uv = (tile_u0 + u * inner_w, tile_v0 + v * inner_h)
-
-    mesh.update()
-
-
-# ── cylinder-atlas UV unwrap ─────────────────────────────────────────────
-
-def _cylinder_atlas_unwrap(obj, *, axis: int):
-    mesh = obj.data
-    if _UV_LAYER_NAME in mesh.uv_layers:
-        mesh.uv_layers.remove(mesh.uv_layers[_UV_LAYER_NAME])
-    uv_layer = mesh.uv_layers.new(name=_UV_LAYER_NAME)
-    uv_data = uv_layer.data
-    mesh.uv_layers.active_index = list(mesh.uv_layers).index(uv_layer)
-
-    center, extents = _world_aabb(obj)
-    mw = obj.matrix_world
-    obj_rot = mw.to_3x3()
-
-    tangent_a = (axis + 1) % 3
-    tangent_b = (axis + 2) % 3
-    axial_half = max(extents[axis] * 0.5, 1e-6)
-    radius_half = max(extents[tangent_a], extents[tangent_b]) * 0.5
-
-    lat_u0 = TILE_MARGIN
-    lat_v0 = 0.5 + TILE_MARGIN
-    lat_w = 1.0 - 2 * TILE_MARGIN
-    lat_h = 0.5 - 2 * TILE_MARGIN
-
-    cap_w = 0.5 - 2 * TILE_MARGIN
-    cap_h = 0.5 - 2 * TILE_MARGIN
-    cap_neg_u0 = TILE_MARGIN
-    cap_pos_u0 = 0.5 + TILE_MARGIN
-    cap_v0 = TILE_MARGIN
-
-    axis_vec = Vector((0, 0, 0))
-    axis_vec[axis] = 1.0
-
-    for poly in mesh.polygons:
-        n_world = (obj_rot @ poly.normal).normalized()
-        is_endcap = abs(n_world.dot(axis_vec)) > _ENDCAP_NORMAL_THRESH
-
-        for loop_idx in poly.loop_indices:
-            v_idx = mesh.loops[loop_idx].vertex_index
-            v_world = mw @ Vector(mesh.vertices[v_idx].co)
-            p = v_world - center
-
-            if is_endcap:
-                t_a = p[tangent_a] / max(radius_half, 1e-6) * 0.5 + 0.5
-                t_b = p[tangent_b] / max(radius_half, 1e-6) * 0.5 + 0.5
-                if n_world.dot(axis_vec) < 0:
-                    u = cap_neg_u0 + t_a * cap_w
-                else:
-                    u = cap_pos_u0 + t_a * cap_w
-                v = cap_v0 + t_b * cap_h
-            else:
-                theta = math.atan2(p[tangent_b], p[tangent_a])
-                u_norm = (theta + math.pi) / (2 * math.pi)
-                v_norm = p[axis] / (2 * axial_half) + 0.5
-                u = lat_u0 + u_norm * lat_w
-                v = lat_v0 + v_norm * lat_h
-
-            uv_data[loop_idx].uv = (u, v)
-
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(
+        angle_limit=_SMART_ANGLE_LIMIT,
+        island_margin=_SMART_ISLAND_MARGIN,
+    )
+    bpy.ops.object.mode_set(mode="OBJECT")
+    obj.select_set(False)
     mesh.update()
 
 
@@ -326,7 +204,7 @@ def _save_uv_sidecar(obj, out_json: Path):
 def main():
     args = _parse_args()
     slug_src = Path(args["slug_src_dir"])
-    parts = args["parts"]  # [{name, atlas_mode, cylinder_axis, dual}]
+    parts = args["parts"]  # [{name, ...}] — atlas_mode/dual/cylinder_axis ignored (Smart UV Project)
     size = int(args["size"])
     out_dir = Path(args["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -335,17 +213,10 @@ def main():
 
     for p in parts:
         name = p["name"]
-        mode = p.get("atlas_mode", "cube")
-        print(f"[bake_cond] processing {name} (mode={mode})")
+        print(f"[bake_cond] processing {name}")
 
         obj = _isolate(name)
-
-        if mode == "cylinder":
-            _cylinder_atlas_unwrap(obj, axis=int(p.get("cylinder_axis", 2)))
-        else:
-            dual = bool(p.get("dual", False))
-            _cube_atlas_unwrap(obj, dual=dual)
-
+        _smart_uv_unwrap(obj)
         _bake_form(obj, size, out_dir / f"cond_{name}.png")
         _save_uv_sidecar(obj, out_dir / f"uv_{name}.json")
         _unisolate()

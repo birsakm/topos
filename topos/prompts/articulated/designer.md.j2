@@ -46,10 +46,11 @@ Design an articulated object by writing `src/design.json` — a frozen, machine-
       // build harness will call it after construction. See SKILL
       // `topos_texture_creator` for the patterns.
       "texture": {
-        "kind": "procedural | image",                 // procedural = shader nodes only; image = generate PNG
-        "prompt": "<for image kind: short Gemini prompt, e.g. 'seamless tileable rough walnut wood plank, 4k'>",
-        "image_relpath": "<for image kind: where the PNG will live, e.g. 'src/textures/drawer_front.png'>",
+        "kind": "procedural | image | uv_atlas",      // procedural = shader nodes only; image = generate flat tileable PNG; uv_atlas = UV-unwrapped, image-gen texture painted onto the part's own UV layout (best for parts whose look must follow their shape, e.g. a labelled panel, a patterned surface)
+        "prompt": "<for image / uv_atlas kind: short image-gen prompt, e.g. 'seamless tileable rough walnut wood plank, 4k'>",
+        "image_relpath": "<for image kind only: where the PNG will live, e.g. 'src/textures/drawer_front.png'>",
         "material_hint": "<short cue passed to the part-geom agent, e.g. 'rough walnut wood, low gloss'>"
+        // uv_atlas needs no image_relpath and no texture_<name>() function: the texture_uv_atlas tool unwraps the part (Smart UV Project), bakes a condition image, generates the texture, and binds it automatically during render/export.
       }
     }
     // ... more parts

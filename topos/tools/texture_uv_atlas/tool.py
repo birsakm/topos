@@ -4,8 +4,8 @@ apply texture + render multiview + export GLB.
 Reads ``design.json`` for per-part ``texture`` specs with ``kind: "uv_atlas"``.
 For each qualifying part, runs a 3-phase pipeline:
 
-  Phase 1 (Blender): UV-unwrap part onto cube/cylinder atlas, AO-bake condition PNG
-  Phase 2 (Gemini):  Generate texture from condition image + per-face prompt prefix
+  Phase 1 (Blender): Smart UV Project unwrap, AO-bake condition PNG
+  Phase 2 (Gemini):  Generate texture from condition image + UV-layout prompt prefix
   Phase 3 (Blender): Apply all generated textures, render multiview, export GLB
 
 Produces the same output shape as ``render_multiview`` (``view_0.png`` … ``view_N.png``)
@@ -25,39 +25,23 @@ from ..registry import tool
 
 _HERE = Path(__file__).resolve().parent
 
-# ── atlas prompt prefixes ────────────────────────────────────────────────
+# ── UV-layout prompt prefix ──────────────────────────────────────────────
 
-_ATLAS_PROMPT_PREFIX_6 = (
-    "The attached image is a labelled UV layout of a 3D object's surface, "
-    "arranged in a 3-column × 2-row grid of 6 tiles. Each tile shows the "
-    "3D form of one face as ambient-occlusion shading. Paint your texture "
-    "content ONLY inside each tile's outline — keep surrounding white space "
-    "untouched. The tiles are: top-left=RIGHT, top-middle=BACK, top-right=TOP, "
-    "bottom-left=LEFT, bottom-middle=FRONT, bottom-right=BOTTOM. "
-    "Output the same dimensions. Subject:"
+# Smart UV Project produces irregular angle-based islands (not a labelled
+# grid), so the prompt describes the layout generically: paint inside the
+# AO-shaded islands, leave everything else alone, no wireframe. This is the
+# "paint inside the coloring-book shapes" framing the threejs-pipeline branch
+# found works best for UV-conditioned image generation.
+_UV_PROMPT_PREFIX = (
+    "The attached image is a UV layout of one part of a 3D object: irregular "
+    "islands of its surface shown with soft ambient-occlusion form shading on "
+    "a light-gray base, surrounded by flat gray space. Paint realistic, "
+    "seamless material texture ONLY inside the form-shaded islands, following "
+    "their shape; leave the surrounding flat-gray space untouched. Do NOT draw "
+    "any mesh wireframe, triangulation, island outlines, seams, text, or "
+    "borders. Use flat, even, neutral lighting with no extra cast shadows or "
+    "baked highlights. Output exactly the same dimensions. Subject:"
 )
-
-_ATLAS_PROMPT_PREFIX_12 = (
-    "The attached image is a labelled UV layout of a hollow 3D object, "
-    "arranged in a 3-column × 4-row grid. The bottom 2 rows are OUTER "
-    "surfaces, top 2 rows are INNER cavity surfaces. Each tile shows AO "
-    "form shading. Paint only inside tiles. Output same dimensions. Subject:"
-)
-
-_ATLAS_PROMPT_PREFIX_CYL = (
-    "The attached image is a labelled UV layout of a cylindrical 3D object. "
-    "The top half is a LATERAL band (side surface unwrapped flat). "
-    "The bottom-left is CAP-NEG (negative endcap), bottom-right is CAP-POS "
-    "(positive endcap). Paint only inside regions. Output same dimensions. Subject:"
-)
-
-
-def _prompt_prefix(atlas_mode: str, dual: bool) -> str:
-    if atlas_mode == "cylinder":
-        return _ATLAS_PROMPT_PREFIX_CYL
-    if dual:
-        return _ATLAS_PROMPT_PREFIX_12
-    return _ATLAS_PROMPT_PREFIX_6
 
 
 # ── tool ─────────────────────────────────────────────────────────────────
@@ -66,10 +50,10 @@ def _prompt_prefix(atlas_mode: str, dual: bool) -> str:
     "texture_uv_atlas",
     description=(
         "UV-atlas texture pipeline: for each part with ``texture.kind='uv_atlas'`` "
-        "in design.json, bakes an AO condition image on a cube/cylinder UV atlas, "
-        "calls Gemini to generate the texture, then applies all textures and "
-        "renders multiview + exports GLB. Replaces render_multiview + export_glb "
-        "for textured output."
+        "in design.json, Smart-UV-Project unwraps the part and bakes an AO "
+        "condition image, calls Gemini to generate the texture, then applies all "
+        "textures and renders multiview + exports GLB. Replaces render_multiview "
+        "+ export_glb for textured output."
     ),
     input_schema={
         "type": "object",
@@ -234,7 +218,7 @@ def texture_uv_atlas(
             })
             continue
 
-        prefix = _prompt_prefix(p["atlas_mode"], p["dual"])
+        prefix = _UV_PROMPT_PREFIX
         ref_imgs = p.get("reference_images") or []
         if ref_imgs:
             full_prompt = (
