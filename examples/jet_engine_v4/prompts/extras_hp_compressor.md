@@ -1,0 +1,6 @@
+**Reference anchor.** High-pressure compressor on a PW1100G — an 8-stage axial compressor with progressively smaller blades as the air is compressed and accelerated (the OD stays roughly constant but the flow annulus narrows). Sits between the LPC and the combustor. In cutaway you can see all 8 rotor disks and intervening stators, with the flow path tapering inward.
+
+- Geometry strategy: a stack of 8 thin rotor disks along the engine axis, OD ~50 cm at the upstream end tapering to ~40 cm at the downstream end (flow-path contraction). Each disk has ~50-70 stubby blade stubs at the rim (smaller and more numerous than LPC). Stators between each pair of rotors. Outer drum casing cut away on one side.
+- Mandatory features: 8 distinct stages, progressive flow-path contraction (the rim diameter shrinks stage-to-stage), blade count INCREASES through the stages (later stages have more, smaller blades), drum casing cutaway, visible mid-span bleed-air port boss on the casing OD around stage 5.
+- Color: Inconel silver darkening to a faint straw-yellow heat tint in the last 1-2 stages.
+- ANTI-pattern: do NOT model all 8 stages as identical. The contraction and the increasing blade-count-with-stage are required to read as a real HPC. Do NOT make this a smooth solid drum.

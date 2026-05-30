@@ -1,0 +1,55 @@
+# Task FIX_PART_{{ part_name }}_RUNTIME_{{ iteration }}
+
+# Iteration {{ iteration }}: runtime fix — `{{ part_name }}` does not build
+
+The buildability check (`verify_parts` tool) failed for `{{ part_name }}` before any rendering could run. **No judge visual feedback exists** — this is a hard Python / Blender API error, not a quality issue. Fix the bug, don't redesign the part.
+
+## What went wrong
+
+- **Stage**: `{{ stage }}` (where in the import/call chain it broke)
+- **Error class**: `{{ error_class }}`
+- **Error message**:
+
+```
+{{ error_msg }}
+```
+
+- **Full traceback**:
+
+```
+{{ traceback }}
+```
+
+## Your job — scoped to a single file
+
+1. **Read** `src/parts/{{ lower_name }}.py` — the part agent's output that's broken.
+2. **Locate the bug** using the traceback line numbers above. Common culprits in this codebase:
+   - **Blender 4.x API used on Blender 5.x runtime** — most likely cause when the error class is `AttributeError` and the message names a `bpy.*` attribute. Examples we've already seen and fixed:
+     - `Mesh.use_auto_smooth` (removed in 5.x — use the "Smooth by Angle" modifier, or just skip it; auto-smooth is cosmetic)
+     - `BooleanModifier.solver = 'FAST'` (5.x enum is `'FLOAT' / 'EXACT' / 'MANIFOLD'`)
+   - **Wrong field name** on a bpy struct (typo, or moved between versions)
+   - **Wrong argument** to a `bpy.ops.*` operator
+   - **None return** (geometry built but `build_{{ lower_name }}()` returned `None` instead of the object)
+3. **Verify the fix** before declaring done. You have Bash + the `topos_bpy_docs` skill. **Use them**:
+   - Search the local bpy index: `topos bpy-docs search "{{ error_class }}"` or search for the exact attribute that failed
+   - If unsure whether an API exists in Blender 5.x at all, search the index — it's built from the installed Blender, so a missing symbol = removed in this version
+4. **Re-run verify** locally if you want fast confirmation: `topos verify-parts {{ part_name }}` (via Bash). The framework will run it again anyway; this is just to catch a second-order bug before iterating.
+
+## Hard constraints
+
+- **Edit `src/parts/{{ lower_name }}.py` only**. Do NOT touch other parts' files, `src/build.py`, `src/joints.yaml`, or `src/design.json`. Other parts may have passed verify already.
+- **Preserve the function signatures**: `build_{{ lower_name }}()` must still exist and return a bpy MESH object named `"{{ part_name }}"`. If `texture_{{ lower_name }}(obj)` exists, keep its signature.
+- **Preserve the world bbox** the original part agent designed for. The part's `world_xyz` / `world_extents` from `src/design.json` is the contract — your fix shouldn't shift it.
+- **Minimal change**. If the bug is one bad attribute set, just fix that line. Don't rewrite the geometry.
+
+## When the error is "build returned None"
+
+The geometry was constructed but the function forgot to `return obj`. Add the `return obj` at the bottom. Don't restructure the rest of the function.
+
+## When the error is "wrong type" (returned non-MESH)
+
+Probably `build_{{ lower_name }}()` returned a `bpy.types.Light`, `Empty`, or `Curve` instead of `Mesh`. Either:
+- Convert: `bpy.ops.object.convert(target='MESH')` after construction
+- Or rebuild via `bmesh` and create the object as `bpy.data.objects.new(name, bm_mesh)`
+
+Use the Read + Edit tools. Output ONLY the edited file via Edit/Write — no commentary, no markdown.

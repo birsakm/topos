@@ -1,0 +1,7 @@
+id: articulated_rocket
+domain: articulated
+description: |
+  Articulated model rocket with UV-atlas textures.
+  Four parts (NoseCone, Body, Fins, Nozzle), two joints (nose_fixed,
+  nozzle_gimbal). Demonstrates the texture_uv_atlas tool: per-part
+  AO-conditioned Gemini texture generation on cube-atlas UV layouts.

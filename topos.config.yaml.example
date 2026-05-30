@@ -1,0 +1,24 @@
+# Repo-local Topos config override. Copy to ./topos.config.yaml (gitignored)
+# and edit only the keys you want to override. Layering order:
+#   defaults (topos/config_defaults.yaml)
+#     < ~/.config/topos/config.yaml
+#     < ./topos.config.yaml
+#     < env vars (TOPOS__SECTION__KEY=...)
+
+# blender:
+#   binary: /usr/bin/blender
+#   hot_pool:
+#     enabled: true
+
+# backends:
+#   claude:
+#     auth: api_key            # ANTHROPIC_API_KEY must be set
+
+# judges:
+#   claude_vision:
+#     model: claude-opus-4-7
+
+# image_gen:
+#   default: gemini
+#   gemini:
+#     api_key: <your gemini api key>      # also reused by GeminiCLIBackend when env var not set

@@ -1,0 +1,157 @@
+# Task FIX_PART_{{ part_name }}_{{ iteration }}
+
+# Iteration {{ iteration }}: per-part judge feedback fix
+
+The part-shape vision critic rejected `{{ part_name }}` with
+`overall_score = {{ '%.2f'|format(overall_score) }}` (rubric pass threshold is 0.60).
+
+## ✅ PRESERVE list — criteria that already PASSED (do NOT regress these)
+
+{% set passing = [] -%}
+{% set failing = [] -%}
+{% for cid, info in per_criterion.items() -%}
+  {%- if info.score >= 0.60 -%}{% set _ = passing.append((cid, info)) %}{%- else -%}{% set _ = failing.append((cid, info)) %}{%- endif -%}
+{% endfor -%}
+{% if passing -%}
+These are the strengths of the current `src/parts/{{ part_name|lower }}.py`. Whatever code produces them must stay. **If your edit causes any of these scores to drop, that's a regression — the fix-loop will count it as a failure.**
+
+{% for cid, info in passing -%}
+  - **{{ cid }}** (score {{ '%.2f'|format(info.score) }}): {{ info.feedback }}
+{% endfor %}
+{%- else -%}
+(nothing — every criterion is below the threshold; this part needs significant work)
+{%- endif %}
+
+## ❌ IMPROVE list — criteria that FAILED
+
+{% if failing -%}
+{% for cid, info in failing -%}
+  - **{{ cid }}** (score {{ '%.2f'|format(info.score) }}): {{ info.feedback }}
+{% endfor %}
+{%- else -%}
+(none — but overall_score is below threshold; check the suggested fixes)
+{%- endif %}
+
+## Suggested concrete fixes from the judge
+
+{% if suggested_fixes -%}
+{% for fix in suggested_fixes -%}
+  - {{ fix }}
+{% endfor %}
+{%- else -%}
+  (no concrete fixes given; infer from criterion feedback)
+{%- endif %}
+
+---
+
+## Step 0 — Decide: Edit or Write?
+
+You have both `Edit` and `Write` tools available. Choose deliberately:
+
+- **Edit (default)** — when the IMPROVE list is mostly *additive*: bevels, insets,
+  surface features, texture passes, secondary geometry. The existing geometry strategy
+  is correct; you're enriching it. Edit preserves everything you don't touch — pairs
+  perfectly with a non-empty PRESERVE list.
+
+- **Write (justified rewrite)** — when the existing geometry strategy is *fundamentally
+  unfit* for the part's role: `recognizable_as_role` or `silhouette_correctness` is
+  below ~0.4, OR the IMPROVE list demands structural changes that can't co-exist with
+  the current code (e.g. "the head should be a sphere, not a stack of cubes"). Acceptable
+  to start fresh because there's little salvageable structure.
+
+**Before you call Edit or Write, state in ONE line at the top of your response:**
+
+```
+Approach: Edit | preserve: <named features from PRESERVE list> | add: <named features from IMPROVE list>
+```
+
+or
+
+```
+Approach: Write | reason: <one sentence on why the existing geometry strategy is unsalvageable> | salvage: <any specific helpers / materials carried over>
+```
+
+If your `preserve` list has 2+ items, Edit is almost always the right choice — those items are concrete code you'd otherwise have to manually re-derive in a Write.
+
+## Step 1 — Read
+
+1. Read `src/design.json` to refresh on `{{ part_name }}`'s spec (world bbox,
+   color, optional `cavity`/`texture` fields).
+2. Read the current `src/parts/{{ part_name|lower }}.py` to see what's there and
+   identify the code anchors corresponding to each PRESERVE item.
+{%- set _vis_artifact_kw = [
+  'floating', 'stray', 'detached', 'disconnected', 'misalign',
+  'intersect', 'penetrat', 'punch', 'z-fight', 'magenta',
+  'missing texture', 'inverted normal', 'flip', 'occlud',
+  'wrong position', 'wrong color', 'inconsistent color',
+] -%}
+{%- set _has_visual_artifact = namespace(found=False) -%}
+{%- for cid, info in per_criterion.items() -%}
+  {%- if info.score < 0.40 -%}{% set _has_visual_artifact.found = True %}{%- endif -%}
+  {%- for kw in _vis_artifact_kw -%}
+    {%- if kw in info.feedback|lower -%}{% set _has_visual_artifact.found = True %}{%- endif -%}
+  {%- endfor -%}
+{%- endfor -%}
+{% if _has_visual_artifact.found %}
+3. **Read the actual renders** — the judge flagged a visual artifact or a
+   criterion scored very low (< 0.40). Do NOT try to fix from text alone:
+     - `Read artifacts/parts_render/{{ part_name }}/view_front_low.png` (and the other 3 views in that dir)
+     - Look at the build-time geometry-contract warnings for this part:
+       ```bash
+       python3 -c "
+       import json, glob
+       seen = set()
+       for f in sorted(glob.glob('trajectories/*tool_export_glb*/output.json') +
+                       glob.glob('trajectories/*tool_render_multiview*/output.json') +
+                       glob.glob('trajectories/*tool_render_parts*/output.json')):
+           try: warnings = (json.load(open(f)).get('warnings') or [])
+           except Exception: continue
+           for w in warnings:
+               if '{{ part_name }}' in w and w not in seen:
+                   seen.add(w); print(w)
+       "
+       ```
+   The PNG shows you exactly what the judge saw. The grep finds quantitative
+   geometry warnings naming this part (mm-level gap measurements, collision
+   volumes, attachment failures — things vision LLMs can't see at 512×512
+   resolution). Together: visual evidence + structural coordinates. For
+   purely additive fixes (bevel-too-narrow, missing-inset) the text feedback
+   is enough — skip this step.
+{%- else %}
+3. (Visual-artifact read not needed — feedback is about additive detail only.
+   Skip the PNG Read to save tokens.)
+{%- endif %}
+
+## Step 2 — Apply changes
+
+3. **Modify `src/parts/{{ part_name|lower }}.py` only**. Do NOT touch other parts'
+   files, do NOT touch `src/build.py`, do NOT touch `src/joints.yaml`, do NOT touch
+   `src/design.json`. Other parts and the assembly are passing — only this one
+   part needs revision.
+4. Preserve the function signatures: `build_{{ part_name|lower }}()` must still
+   exist and return a bpy object named `"{{ part_name }}"`. If a
+   `texture_{{ part_name|lower }}(obj)` exists, keep its signature.
+5. Map each IMPROVE item to a concrete code change:
+   - If `geometry_detail` is low: add bevels / insets / non-primitive shapes
+     (read `topos_part_geometry` + `topos_furniture_hardware` SKILLs).
+   - If `material_quality` is low: define / improve `texture_{{ part_name|lower }}(obj)`
+     (read `topos_texture_creator` SKILL — procedural or image-based).
+   - If `recognizable_as_role` is low: rebuild the geometry from a clearer
+     pattern (e.g. handle = composite cylinder+stubs, drawer = 5-panel tray).
+6. **For each IMPROVE item you fix, verify the corresponding PRESERVE items still
+   render** — mentally trace: did your new code overwrite a material slot, move a
+   vertex, replace a join target, change a transform? If yes, your edit is too
+   aggressive — narrow it.
+
+## Step 3 — Stop
+
+7. The framework re-renders this part (mode=part), re-judges it, and continues.
+   Keep the bbox contract (5mm tolerance) — bbox failures break downstream assembly.
+
+For Blender API specifics, run `topos bpy-docs search "<query>"` from Bash.
+For image textures: do NOT call any generation CLI yourself — the framework
+dispatches a separate `generate_texture_image` ToolTask per part that reads
+`design.json[parts.<this_part>.texture.prompt]` and writes the PNG to
+`image_relpath`. Your `texture_<name>(obj)` just binds the PNG (and falls
+back to flat color when the file is missing). See the `topos_texture_creator`
+SKILL Pattern 2 for the binding template.

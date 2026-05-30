@@ -1,0 +1,9 @@
+TEMPLATE PART — 18 instances. Tell the design agent to add an `instances` field on this part's design.json entry with rotation_euler values spaced 20° apart around the +Y axis: [(0, 0, 0), (0, 0.349, 0), (0, 0.698, 0), (0, 1.047, 0), (0, 1.396, 0), (0, 1.745, 0), (0, 2.094, 0), (0, 2.443, 0), (0, 2.793, 0), (0, 3.142, 0), (0, 3.491, 0), (0, 3.840, 0), (0, 4.189, 0), (0, 4.538, 0), (0, 4.887, 0), (0, 5.236, 0), (0, 5.585, 0), (0, 5.934, 0)]. The part agent writes ONE canonical `build_fan_blade()` at the canonical orientation (blade root at +Y axis with span extending radially outward in +X); the build agent copies and rotates per instance.
+
+**Reference anchor.** Pratt & Whitney PW1000G first-stage wide-chord swept fan blade — titanium-alloy airfoil with significant chord (wide-chord design), gentle forward sweep at the tip (~10°), pronounced root-to-tip twist (~15°), rounded leading edge for foreign-object damage tolerance, and a tapered trailing edge. Span ~80 cm (root to tip), root chord ~25 cm, tip chord ~18 cm.
+
+- Geometry strategy: NACA 4-digit airfoil cross-section (e.g. NACA 6510 thinning to NACA 4506 at the tip) lofted across 7-9 spanwise stations from root to tip. Each station rotates progressively (twist) and translates slightly forward (sweep). Add a fir-tree or dovetail root attachment (~5 cm of solid root geometry mating with FanDisk slot).
+- Mandatory features: visible root-to-tip twist (the tip chord is rotated ~15° relative to the root chord), forward sweep at the tip, rounded leading edge with ~5 mm radius, tapered trailing edge with <1 mm thickness, dovetail/fir-tree root.
+- Color: brushed titanium silver with a faint mid-blue heat tint near the root and a polished leading edge.
+- Bbox: root at FanDisk slot, tip clears FanCase ID by 3-5 mm.
+- ANTI-pattern: do NOT model as a flat rectangle, twisted plank, or untwisted aerofoil. The twist AND the sweep are both required to read as a modern wide-chord fan blade.

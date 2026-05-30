@@ -1,0 +1,56 @@
+Implement `src/parts/{{ lower_name }}.py`.
+
+1. Use the Read tool to load `src/design.json`. Find the entry where `name == "{{ part_name }}"`. Note its `world_xyz`, `world_extents`, `geometry_strategy`, `color_rgba`, and any extra fields (`cavity`, `wall_thickness`, etc.).
+
+2. Write `src/parts/{{ lower_name }}.py` with EXACTLY this top-level structure:
+
+```
+import bpy
+
+def build_{{ lower_name }}():
+    # ... your geometry code ...
+    return obj   # obj.name MUST equal "{{ part_name }}"
+```
+
+If `design.json` includes a `"texture"` field for this part, ALSO define a sibling
+function `texture_{{ lower_name }}(obj)` in the same file. The build harness calls
+it after `build_{{ lower_name }}()` with the constructed object. See the SKILL
+`topos_texture_creator` for procedural-vs-image patterns and UV unwrap details.
+Failure inside `texture_*` is non-fatal — build.py logs and continues with flat material.
+
+**Do NOT call `topos generate-texture` from Bash.** The framework dispatches a
+separate `generate_texture_image` ToolTask per part (between your part task and
+the build task) that materializes the PNG from `design.json[texture.prompt]`
+into `design.json[texture.image_relpath]` BEFORE `texture_{{ lower_name }}(obj)`
+runs at build time. Your job is only to write the `texture_{{ lower_name }}(obj)`
+shader-binding code — for image textures, read the PNG path from design.json
+and load it with `bpy.data.images.load`; if the file isn't there (texture
+ToolTask failed), fall back to a flat material.
+
+3. **Check for `instances` in your spec.** If `spec.get("instances")` is non-empty in design.json, your part is a **template** that build.py will duplicate. In that case:
+
+   - Build the part's geometry **at the canonical pose only** — origin or `world_xyz`, no rotation, no per-instance shift. The build agent applies each instance's `rotation_euler` / `translation` after copying. Do NOT loop over instances inside your `build_{{ lower_name }}()`.
+   - `world_xyz` / `world_extents` describe ONE instance's bbox — the canonical one. Sanity-check that.
+   - One template ≠ one mesh per instance. Build the SHAPE; the build agent handles placement N times.
+   - Anti-pattern: hard-coding 6 instances of geometry inside `build_fan_blade()` then expecting build.py to also instantiate 6. That gives 36 blades. The template builds ONE; build.py multiplies.
+
+   If there's NO `instances` field, ignore this section — your part is a single-instance build.
+
+4. Geometry contract — the returned obj's WORLD bbox must satisfy:
+   - bbox center within 5mm of `world_xyz` (single-instance parts) OR centered at origin / canonical pose (instance template parts; build.py validates post-transform)
+   - bbox extents (full width/depth/height along X/Y/Z) within 5mm of `world_extents`
+
+5. **Part-specific detail requirements (NOT optional — these are what make the part read as a real object instead of a toy block):**
+
+{{ extras }}
+
+6. After building, set `obj.color = tuple(spec["color_rgba"])` and ensure `obj.name = "{{ part_name }}"`.
+
+7. Hard constraints:
+   - bpy only, no third-party packages
+   - NO cameras, NO lights, NO `scene.world.*`, NO `scene.render.*`, NO `bpy.ops.render.render()`
+   - NO top-level code beyond imports and the `build_{{ lower_name }}` function definition
+   - Deterministic (no random)
+   - File importable as `from parts.{{ lower_name }} import build_{{ lower_name }}`
+
+Use Read to load `src/design.json`, then Write to create `src/parts/{{ lower_name }}.py`.

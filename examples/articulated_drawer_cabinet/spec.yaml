@@ -1,0 +1,22 @@
+id: articulated_drawer_cabinet
+domain: articulated
+description: |
+  Simplest Stage-2 articulated object: a single-drawer wooden cabinet with
+  a handle on the drawer front. Three rigid parts (Frame, Drawer, Handle),
+  one prismatic joint (drawer slides in/out of frame), one fixed joint
+  (handle rigidly attached to drawer).
+
+  The agent writes two files:
+    - src/build.py     — Blender geometry (pure mesh creation; no camera/render)
+    - src/joints.yaml  — link + joint specification (URDF semantics)
+
+  The pipeline then:
+    1. render_multiview         — 8 octant views of the assembled object
+    2. export_glb               — single artifacts/object.glb for any GLTF
+                                   viewer / web / Unity / Unreal pipeline
+    3. export_urdf              — artifacts/object.urdf + parts/*.obj for
+                                   robotics / simulation use
+    4. judge (articulated_v1)   — VLM evaluation of multi-view renders
+
+  Stage 2 MVP: judges static renders only; multi-joint-state evaluation
+  arrives in Cut 2.

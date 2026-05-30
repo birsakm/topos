@@ -1,0 +1,99 @@
+Design an articulated object by writing `src/design.json` — a frozen, machine-readable contract that every downstream task will read. **Output ONLY the JSON file via the Write tool. No commentary, no markdown fences.**
+
+## Project intent
+
+{{ intent }}
+
+## Required schema (no comments, no trailing commas)
+
+```
+{
+  "robot_name": "<machine-readable slug>",
+  "description": "<one-line natural language description>",
+  "parts": [
+    {
+      "name": "<PascalCase>",                       // matches bpy.data.objects key + URDF link name
+      "role": "<one-line natural language role>",
+      "geometry_strategy": "<advisory; e.g. 5-panel-join | bmesh-boolean | extruded-bar | D-handle | recessed-pull>",
+      "world_xyz": [cx, cy, cz],                    // bbox CENTER in world coords (meters)
+      "world_extents": [w, d, h],                   // full size along X / Y / Z (meters, positive)
+      "color_rgba": [r, g, b, a],
+      // Optional: "place_method": "baked" (default) | "canonical".
+      //   baked: part built at world position; world_xyz is bbox center after build_<part>().
+      //   canonical: part built at origin; build.py applies world_xyz + world_rpy after construction.
+      //   Use "canonical" when (a) the part should be reusable across projects, or (b) the
+      //   pipeline will later re-render at multiple joint poses (e.g. drawer 0/50/100% open).
+      //   Default to "baked" unless one of those reasons applies.
+      // Optional per-part sub-specs:
+      "cavity": { "world_xyz": [...], "world_extents": [...], "open_axis": "<axis>" },
+      "wall_thickness": <meters>,
+      "outer_bevel_radius": <meters>,
+      "front_inset_depth": <meters>,
+      "front_inset_margin": <meters>,
+      // Optional template-and-instances. When the intent's "TEMPLATE PARTS"
+      // section lists this part, you MUST include an `instances` array here.
+      // build.py constructs the canonical mesh once via build_<lower>() then
+      // copies + applies each entry's transform, producing N scene objects
+      // named <PascalName>_0..<PascalName>_{N-1}. world_xyz / world_extents
+      // describe ONE canonical instance, not the cluster.
+      "instances": [
+        {"rotation_euler": [rx, ry, rz]},                              // rotation only (radians)
+        {"rotation_euler": [rx, ry, rz], "translation": [tx, ty, tz]}, // both
+        {"translation": [tx, ty, tz]}                                  // translation only (meters)
+      ],
+      // Optional texture spec. When present, the part's Python file MUST also
+      // define `texture_<lowercase_name>(obj)` alongside `build_<...>()`; the
+      // build harness will call it after construction. See SKILL
+      // `topos_texture_creator` for the patterns.
+      "texture": {
+        "kind": "procedural | image",                 // procedural = shader nodes only; image = generate PNG
+        "prompt": "<for image kind: short Gemini prompt, e.g. 'seamless tileable rough walnut wood plank, 4k'>",
+        "image_relpath": "<for image kind: where the PNG will live, e.g. 'src/textures/drawer_front.png'>",
+        "material_hint": "<short cue passed to the part-geom agent, e.g. 'rough walnut wood, low gloss'>"
+      }
+    }
+    // ... more parts
+  ],
+  "joints": [
+    {
+      "name": "<joint_name>",
+      "type": "<prismatic | revolute | fixed | continuous>",
+      "parent": "<PascalCase part name>",
+      "child":  "<PascalCase part name>",
+      "axis":   [x, y, z],                          // only for non-fixed joints
+      "limit_from_rest": [lower, upper]              // only for prismatic / revolute. Joint position 0 == rest pose.
+    }
+    // ... more joints
+  ]
+}
+```
+
+## TEMPLATE PARTS — what to look for in intent
+
+If the intent above contains a `## TEMPLATE PARTS` section like:
+
+```
+## TEMPLATE PARTS
+- Leg: 4 instances; translation=[(+0.15,+0.15,0),(+0.15,-0.15,0),(-0.15,+0.15,0),(-0.15,-0.15,0)]
+- FanBlade: 6 instances; rotation_euler=[(0,0,0),(0,1.047,0),(0,2.094,0),(0,3.142,0),(0,4.189,0),(0,5.236,0)]
+```
+
+… each listed part in `design.json` MUST include the `instances` array (schema above). Translate each tuple from intent into a dict in the array:
+
+- `translation=[(+0.15,+0.15,0),(+0.15,-0.15,0),...]` becomes `"instances": [{"translation":[0.15,0.15,0]}, {"translation":[0.15,-0.15,0]}, ...]`
+- `rotation_euler=[(0,0,0),(0,1.047,0),...]` becomes `"instances": [{"rotation_euler":[0,0,0]}, {"rotation_euler":[0,1.047,0]}, ...]`
+
+For template parts, set `world_xyz` / `world_extents` to describe **ONE canonical instance** (e.g. one leg's bbox, not the four legs combined). The canonical anchor is typically the origin or one of the instance positions — pick whichever makes the canonical build_<lower>() simplest.
+
+If the intent has NO `## TEMPLATE PARTS` section, do NOT add `instances` anywhere — every part is single-instance.
+
+## Sanity checks before writing
+
+- Connected parts fit with the stated clearance — e.g. a drawer's bbox plus the joint's allowed range must fit within its parent cavity's extents minus the design's clearance
+- Rest pose is what gets RENDERED — choose it so the articulation is visible (e.g. drawer half-open, door slightly ajar) unless the intent says otherwise
+- All `world_extents` are positive
+- `axis` is a unit vector (or close enough)
+- Joint origins implied by the parts' `world_xyz` (the framework will compute them from the design)
+- Coords: meters, Z up. The "front" axis is whichever direction the spec calls "the front"
+
+Use the Write tool to create `src/design.json`. Output valid JSON only.

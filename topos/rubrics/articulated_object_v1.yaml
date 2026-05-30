@@ -1,0 +1,60 @@
+id: articulated_object_v1
+description: |
+  Rubric for a single articulated object (one or a few joints) evaluated
+  on multi-view static renders of the assembled rest pose. Multi-state
+  joint-motion evaluation is reserved for v2.
+judge_backend: claude_vision
+pass_threshold: 0.65
+criteria:
+  - id: structure_plausibility
+    weight: 0.20
+    prompt: >
+      Is the assembled object structurally coherent and physically plausible?
+      Parts should fit together as a real object of this category would. Look
+      for parts that float, intersect unintentionally, or clearly cannot
+      function (e.g. a drawer that's bigger than its cabinet's opening, or a
+      handle that doesn't touch the drawer face).
+
+  - id: part_identification
+    weight: 0.20
+    prompt: >
+      Can you clearly identify every functional part (frame/body, moving
+      sub-part such as drawer/door/lid, and affordances like a handle) from
+      at least 3 of the 8 views? Distinct colors should help. Missing or
+      merged parts fail this criterion.
+
+  - id: geometry_detail
+    weight: 0.25
+    prompt: >
+      Are part shapes more refined than naive primitives? Score by what is
+      visible in the renders:
+        - 0.2-0.4: pure stack of axis-aligned simple cubes (no bevels, no
+          insets, plain box handle)
+        - 0.5-0.7: at least one detail feature is visible (bevels/chamfers
+          on edges, recessed inner border on the drawer face, handle that's
+          not a flat box, or drawer with visible wall thickness/open top)
+        - 0.8+: multiple detail features simultaneously; cabinet body looks
+          like furniture not a milk crate; handle is a recognizable design
+          (D-shape, cylinder with caps, recessed pull) not a featureless bar
+
+  - id: fit_quality
+    weight: 0.15
+    prompt: >
+      Do connected parts fit tightly and naturally? Visible gaps between a
+      drawer's sides and the cabinet's interior walls should be small (≤5mm
+      in real-world scale at this object's size). Excessive clearance that
+      makes the object look loosely assembled lowers this score. Tiny
+      construction tolerance is acceptable; a finger-wide gap is not.
+
+  - id: visible_geometry
+    weight: 0.10
+    prompt: >
+      Is the object well-framed across the 8 views, with no clipping, severe
+      occlusion, off-screen geometry, or degenerate scale? Scale consistent.
+
+  - id: no_obvious_errors
+    weight: 0.10
+    prompt: >
+      Are there render errors — missing-texture magenta, NaN polygons,
+      severe z-fighting, flickering, or geometry punching through other
+      parts in a clearly unintended way?

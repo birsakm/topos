@@ -1,0 +1,125 @@
+{
+  "project": "articulated_drawer_cabinet",
+  "iter_policy": {
+    "max_global_iters": 3,
+    "stop_on": "judge_pass"
+  },
+  "tasks": [
+    {
+      "id": "01_agent_design",
+      "kind": "agent",
+      "backend": "claude",
+      "goal_template": "topos:articulated/designer.md.j2",
+      "goal_params": {
+        "intent_file": "./prompts/intent.md"
+      },
+      "skills": [
+        "topos_design_articulated",
+        "topos_texture_creator"
+      ],
+      "allowed_tools": [
+        "Read",
+        "Edit",
+        "Write",
+        "Glob",
+        "WebSearch",
+        "WebFetch"
+      ],
+      "timeout_s": 300
+    },
+    {
+      "id": "02_subgraph_parts",
+      "kind": "subgraph",
+      "expand_from": "src/design.json",
+      "expansion_kind": "articulated_parts",
+      "deps": ["01_agent_design"]
+    },
+    {
+      "id": "03_agent_build",
+      "kind": "agent",
+      "backend": "claude",
+      "deps": ["02_subgraph_parts"],
+      "goal_file": "topos:articulated/builder.md",
+      "skills": [
+        "topos_bpy_docs",
+        "topos_geometry_contracts"
+      ],
+      "allowed_tools": [
+        "Read",
+        "Edit",
+        "Write",
+        "Glob",
+        "Bash"
+      ],
+      "timeout_s": 300
+    },
+    {
+      "id": "04_agent_joints",
+      "kind": "agent",
+      "backend": "claude",
+      "deps": ["01_agent_design"],
+      "goal_file": "topos:articulated/joints_writer.md",
+      "skills": [
+        "topos_joints_creator",
+        "topos_bpy_docs"
+      ],
+      "allowed_tools": [
+        "Read",
+        "Edit",
+        "Write",
+        "Glob",
+        "Bash"
+      ],
+      "timeout_s": 180
+    },
+    {
+      "id": "05_tool_render_multiview",
+      "kind": "tool",
+      "tool": "render_multiview",
+      "args": {
+        "script_relpath": "src/build.py",
+        "output_subdir": "artifacts/object_render",
+        "n_views": 8,
+        "resolution": 512,
+        "engine": "eevee",
+        "coloring": "as_authored",
+        "timeout_s": 360
+      },
+      "deps": ["03_agent_build"]
+    },
+    {
+      "id": "06_tool_export_glb",
+      "kind": "tool",
+      "tool": "export_glb",
+      "args": {
+        "script_relpath": "src/build.py",
+        "output_relpath": "artifacts/object.glb",
+        "timeout_s": 300
+      },
+      "deps": ["03_agent_build"]
+    },
+    {
+      "id": "07_tool_export_urdf",
+      "kind": "tool",
+      "tool": "export_urdf",
+      "args": {
+        "script_relpath": "src/build.py",
+        "joints_relpath": "src/joints.yaml",
+        "output_urdf_relpath": "artifacts/object.urdf",
+        "parts_subdir": "artifacts/parts",
+        "timeout_s": 300
+      },
+      "deps": ["03_agent_build", "04_agent_joints"]
+    },
+    {
+      "id": "08_tool_judge",
+      "kind": "tool",
+      "tool": "judge",
+      "args": {
+        "rubric": "articulated_object_v1",
+        "image_pattern": "artifacts/object_render/view_*.png"
+      },
+      "deps": ["05_tool_render_multiview"]
+    }
+  ]
+}

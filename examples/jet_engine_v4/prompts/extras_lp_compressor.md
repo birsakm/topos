@@ -1,0 +1,6 @@
+**Reference anchor.** Low-pressure compressor booster drum on a PW1100G — a 3-stage axial compressor sitting between the fan and the HPC, consisting of three alternating rotor disks (with stubby blades) and stator vane rings, all enclosed in an Inconel drum casing. In cutaway view you should see the alternating disk-and-stator pattern.
+
+- Geometry strategy: a stack of 3 thin disks (each ~10 cm axial thickness, OD ~50 cm) along the engine axis, separated by ~5 cm gaps where stator rings sit. Each rotor disk has a rim of ~40 stubby radial blade stubs (use a circular array of small extruded aerofoil cross-sections, span ~6 cm, chord ~3 cm). Between rotor disks place stator rings (thin annular plates with their own ~40 vane stubs attached). The whole assembly is partially enclosed by a cylindrical outer drum casing (OD ~55 cm) that is cut away on the same azimuthal sector as the nacelle so the internal disks are visible.
+- Mandatory features: 3 distinct rotor stages visible, 2-3 stator stages between them, alternating rotor/stator pattern, drum casing cutaway on one side, blade-tip clearance gap visible.
+- Color: Inconel silver with slight heat tinting (this section runs warm but not hot).
+- ANTI-pattern: do NOT collapse this into a single featureless cylinder. The visible stage-by-stage breakdown is the whole point of a cutaway.

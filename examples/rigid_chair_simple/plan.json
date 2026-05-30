@@ -1,0 +1,51 @@
+{
+  "project": "rigid_chair_simple",
+  "iter_policy": {
+    "max_global_iters": 1,
+    "stop_on": "judge_pass"
+  },
+  "tasks": [
+    {
+      "id": "01_agent_geom",
+      "kind": "agent",
+      "backend": "claude",
+      "goal": "Create the single file src/build.py. It is a Blender Python script that procedurally constructs the geometry of a simple wooden 4-leg dining chair. Geometry only \u2014 no camera, no lights, no render config. The framework will render the scene from multiple viewpoints after your script runs; if you add a camera, render settings, or call bpy.ops.render.render, those will be stripped.\n\nBehavior, in order:\n\n1. Start clean (this leaves scene.world=None \u2014 that's fine, do NOT touch scene.world):\n     import bpy\n     bpy.ops.wm.read_factory_settings(use_empty=True)\n\n2. Construct the chair from bpy primitive ops only (no bmesh). Use a small helper like `add_box(name, location, scale)` that wraps bpy.ops.mesh.primitive_cube_add + obj.scale + obj.color. Approximate dimensions (units = meters; seat top should be at z\u22480.45):\n   - Seat:      40cm \u00d7 40cm \u00d7 4cm, centered at (0, 0, 0.45)\n   - Four legs: 5cm \u00d7 5cm \u00d7 45cm cubes, tops at z\u22480.43, one at each corner: (\u00b10.175, \u00b10.175, 0.225)\n   - Backrest:  38cm wide \u00d7 4cm thick \u00d7 40cm tall, centered at (0, +0.18, 0.67) so its bottom meets the back edge of the seat and it stands upright facing -Y\n\n   Reminder for cube_add: it creates a 2m \u00d7 2m \u00d7 2m cube. Use the size= parameter or set obj.scale to get the dimensions above; e.g. for a 0.40 \u00d7 0.40 \u00d7 0.04 seat from a default 2m cube, obj.scale = (0.20, 0.20, 0.02).\n\n3. Give every chair part a warm wood-brown color so workbench OBJECT shading shows them clearly. For each part object obj:\n     obj.color = (0.45, 0.27, 0.15, 1.0)\n\nHard constraints:\n- Use only bpy. No third-party packages, no pip installs.\n- Do NOT set scene.world.<anything> \u2014 use_empty=True leaves scene.world as None.\n- Do NOT add cameras or lights \u2014 the framework provides them.\n- Do NOT call bpy.ops.render.render or set scene.render.* \u2014 the framework renders.\n- All chair parts must touch but not overlap so the chair is structurally readable.\n- Write src/build.py with the Write tool. Do not run Blender yourself.\n- Keep the script self-contained and easy to read; ~40 lines is plenty.",
+      "allowed_tools": [
+        "Read",
+        "Edit",
+        "Write",
+        "Glob"
+      ],
+      "timeout_s": 300
+    },
+    {
+      "id": "02_tool_render_multiview",
+      "kind": "tool",
+      "tool": "render_multiview",
+      "args": {
+        "script_relpath": "src/build.py",
+        "n_views": 8,
+        "resolution": 512,
+        "engine": "workbench",
+        "coloring": "as_authored",
+        "timeout_s": 240,
+        "output_subdir": "artifacts/object_render"
+      },
+      "deps": [
+        "01_agent_geom"
+      ]
+    },
+    {
+      "id": "03_tool_judge",
+      "kind": "tool",
+      "tool": "judge",
+      "args": {
+        "rubric": "rigid_object_v1",
+        "image_pattern": "artifacts/object_render/view_*.png"
+      },
+      "deps": [
+        "02_tool_render_multiview"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+- **Hollow cavity (mandatory):** the geometry MUST physically have the cavity specified in `spec["cavity"]`. From `cavity.open_axis` (e.g. -Y) the interior must be visible. Strategies:
+  * `5-panel-join` — create 5 wall panels (bottom / top / back / left / right) each of `wall_thickness`. **Critically, apply scale to each panel via `bpy.ops.object.transform_apply(scale=True)` BEFORE joining**, so the joined mesh's local frame doesn't get stretched. Choose a join target with non-degenerate scale (avoid joining into a panel with a very thin axis scale).
+  * `bmesh-boolean` — create a solid outer cube and an inner cavity cube; use bmesh boolean DIFFERENCE.
+- **Bevel on outer edges (mandatory):** add a Bevel modifier OR use `bmesh.ops.bevel` to soften the cabinet's outer edges with `spec["outer_bevel_radius"]` (~3-5mm). Apply the modifier (`bpy.ops.object.modifier_apply`) so the geometry is baked. This is critical for the cabinet to read as furniture, not a milk crate.
+- **Visible wall thickness:** walls of `spec["wall_thickness"]` (~8-15mm) must be physically thick so the interior is bounded by visible material, not a paper-thin shell.

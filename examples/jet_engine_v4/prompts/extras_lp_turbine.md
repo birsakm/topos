@@ -1,0 +1,6 @@
+**Reference anchor.** Three-stage low-pressure turbine on a PW1100G (geared turbofan — runs faster than the fan thanks to the reduction gearbox) — three rotor disks of progressively LARGER diameter as you move aft, with longer slender blades than the HPT. Hot-zone discoloration but less severe than the HPT (gradient from charcoal at the front to a more muted gray-brown at the back).
+
+- Geometry strategy: three thin disks along the engine axis, with diameter INCREASING aft (OD ~45 cm at stage 1, ~52 cm at stage 2, ~58 cm at stage 3 — flow-path expansion as energy is extracted). Each disk has a rim of ~80 longer slender turbine blade stubs (span ~8 cm, chord ~4 cm). Stators between rotors. Outer casing cut away.
+- Mandatory features: 3 rotor disks visible, progressive flow-path EXPANSION (opposite of HPC — the diameter grows aft), more numerous and longer blades than the HPT, less severe but still visible heat discoloration that fades from front to back.
+- Color: dark charcoal at the upstream end fading to a more muted gray-brown at the downstream end; still some burnt-orange tinting but less intense than HPT.
+- ANTI-pattern: do NOT model with constant diameter (must expand aft). Do NOT make as discolored as the HPT (it's cooler than the HPT — the gradient matters).

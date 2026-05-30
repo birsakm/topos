@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opentopos"
+version = "0.0.1"
+description = "OpenTopos — unified, code-driven 3D object generation (static + articulated + texture)"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.12",
+    "pydantic>=2.6",
+    "PyYAML>=6.0",
+    "jinja2>=3.1",
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+topos = "topos.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["topos*"]
+
+[tool.setuptools.package-data]
+topos = ["config_defaults.yaml", "rubrics/*.yaml", "prompts/**/*.md", "prompts/**/*.j2", "prompts/references/*.md", "skills/**/*.md"]
+
+[tool.pytest.ini_options]
+# Default: collect everything under tests/ but EXCLUDE tests/integration/ (real
+# claude + blender, ~$0.30/run, ~50s). To run integration: `pytest -m integration`
+# or `pytest tests/integration/`.
+testpaths = ["tests"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: real LLM + Blender end-to-end test; opt-in via `pytest -m integration`",
+]

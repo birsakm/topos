@@ -1,0 +1,27 @@
+# Task FIX{{ iteration }}
+
+# Iteration {{ iteration }}: judge feedback fix
+
+The previous pipeline run did not pass the rubric (overall_score={{ '%.2f'|format(overall_score) }}).
+
+Per-criterion feedback from the vision judge:
+{% for cid, info in per_criterion.items() -%}
+  - {{ cid }} (score {{ '%.2f'|format(info.score) }}): {{ info.feedback }}
+{% endfor %}
+
+Suggested fixes from the judge:
+{% if suggested_fixes -%}
+{% for fix in suggested_fixes -%}
+  - {{ fix }}
+{% endfor %}
+{%- else -%}
+  (no concrete fixes; infer from feedback)
+{%- endif %}
+
+Your job:
+1. Read the files currently in src/ (use Read and Glob).
+2. Make MINIMAL targeted edits to src/build.py and/or other relevant files to address the feedback.
+3. Do NOT rewrite the whole script; preserve the parts that are working.
+4. Do NOT add cameras, lights, render config, or set scene.world.<X> — the framework handles all rendering.
+5. Do NOT call bpy.ops.render.render or modify scene.render.* — the framework renders separately after your edits.
+6. When you're done editing, stop. The framework will re-render and re-judge automatically.

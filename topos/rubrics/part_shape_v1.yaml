@@ -1,0 +1,75 @@
+id: part_shape_v1
+description: |
+  Rubric for an INDIVIDUAL part rendered in isolation (other parts hidden),
+  4-8 views around the part. Focus: does this part's geometry visually match
+  its declared role, and is it refined enough to read as a real object?
+
+  This is per-part vision critic — runs after each part agent writes its
+  build_<name> + texture_<name>, BEFORE assembly. Catches "Handle is just a
+  bar" and "Frame has no bevel" before they get baked into a full cabinet run.
+
+  Assembly-level rubric (articulated_object_v1) covers fit / collision /
+  joint coherence; this one DOES NOT — only shape + recognizability + detail.
+judge_backend: claude_vision
+pass_threshold: 0.60   # parts are scored more leniently than assembly
+criteria:
+  - id: recognizable_as_role
+    weight: 0.35
+    prompt: >
+      Does the part visually match its declared role (you'll be told the role
+      in the prompt)? Examples:
+        - "frame / cabinet body": closed/hollow box-like furniture shell, not
+          a sphere or open shape
+        - "drawer": a 5-panel open-top tray with visible wall thickness, not a
+          solid cube and not a flat plank
+        - "handle / pull / knob": a graspable shape protruding from a surface
+          — D-handle, cylinder-with-caps, recessed pull, knob — NOT a thin
+          featureless bar
+        - "hinge": two flaps + pin, NOT a single block
+      Score 0.2 = wrong category entirely. Score 0.5 = right category, naive
+      shape. Score 0.8+ = clearly the right object, well-formed.
+
+  - id: geometry_detail
+    weight: 0.30
+    prompt: >
+      Are part shapes more refined than naive primitives? Score by what is
+      visible in the renders:
+        - 0.2-0.4: a single axis-aligned primitive (cube, cylinder) with no
+          features — sharp 90° corners, no bevels, no cutouts, no inset, no
+          subdivision
+        - 0.5-0.7: at least one detail feature is visible — bevelled edges,
+          a recessed inset on one face, visible wall thickness, an
+          end-cap chamfer, or a non-primitive composite shape
+        - 0.8+: multiple detail features simultaneously — bevels AND inset,
+          or wall thickness AND chamfered top edge, or a composite that
+          reads as designed industrial hardware
+      Do not credit detail you cannot SEE in the renders.
+
+  - id: silhouette_correctness
+    weight: 0.15
+    prompt: >
+      From the side / front / top profiles, does the part's silhouette have
+      the right aspect ratios for its role? A drawer should be wider than
+      tall; a handle should be wider than deep; a cabinet body roughly cubic
+      or taller-than-wide. Wildly wrong proportions (e.g. handle taller than
+      it is wide; drawer that's a flat slab; cabinet that's pancake-flat)
+      lower the score. Score 0.5 if proportions are functional but bland;
+      0.8+ if they read as a designed object.
+
+  - id: material_quality
+    weight: 0.10
+    prompt: >
+      Does the part have a visible material — wood texture, painted surface,
+      brushed metal, etc — as opposed to a flat default gray or untextured
+      bare mesh? Score 0.5 for flat solid color (acceptable fallback);
+      0.7+ for visible procedural pattern (wood grain, noise); 0.9 for
+      photorealistic image texture.
+
+  - id: no_obvious_errors
+    weight: 0.10
+    prompt: >
+      Are there render errors visible on this part specifically — missing
+      texture (magenta), NaN polygons / triangulation glitches, severe
+      z-fighting, flipped normals leaving holes, or geometry that appears
+      to have failed (e.g. boolean modifier failure leaving a solid block
+      where there should be a cavity)?

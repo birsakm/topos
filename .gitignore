@@ -1,0 +1,38 @@
+# Repo-local config overrides (machine specific)
+topos.config.yaml
+
+# Environment / secrets
+.env*
+
+# Per-run workspace + canonical drop zone (see CLAUDE.md "Memory layout").
+# Every `topos run` / `topos make` writes here directly; manually prune
+# failed / exploratory runs with `rm -rf outputs/<slug>/`. Fully ignored —
+# generated meshes/renders/GLBs are derivative artifacts ("code is truth").
+/outputs/
+
+# Recipe index is regenerated
+topos/recipes/index.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Venv
+.venv/
+venv/
+uv.log
+
+# Editor / tooling
+.vscode/
+.idea/
+*.swp
+.DS_Store
+.claude/

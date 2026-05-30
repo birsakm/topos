@@ -1,0 +1,3 @@
+# One prompt per line. Lines starting with # are comments and ignored.
+golden dragon relief carved into the front face, dark bronze background
+polished brass with engraved Celtic knot lattice
