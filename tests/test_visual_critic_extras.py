@@ -126,7 +126,10 @@ def test_codex_cli_critic_factory(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fake")
     r = Rubric(id="t", judge_backend="codex_cli", pass_threshold=0.6,
                criteria=[Criterion(id="a", prompt="p")])
-    c = make_critic(r)
+    # Neutralize any global visual_critic.default override so the test exercises
+    # rubric-driven routing, not whatever the local machine's config pins.
+    with patch("topos.config.load_effective_config", return_value={"visual_critic": {}}):
+        c = make_critic(r)
     assert isinstance(c, CliVisionCritic)
     assert c.label == "codex"
 
@@ -135,6 +138,7 @@ def test_gemini_cli_critic_factory(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "fake")
     r = Rubric(id="t", judge_backend="gemini_cli", pass_threshold=0.6,
                criteria=[Criterion(id="a", prompt="p")])
-    c = make_critic(r)
+    with patch("topos.config.load_effective_config", return_value={"visual_critic": {}}):
+        c = make_critic(r)
     assert isinstance(c, CliVisionCritic)
     assert c.label == "gemini"

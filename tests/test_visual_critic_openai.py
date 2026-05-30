@@ -68,8 +68,10 @@ def test_openai_vision_implements_critic_protocol():
 def test_make_critic_dispatches_openai_vision():
     """rubric.judge_backend='openai_vision' should route to OpenAIVisionCritic."""
     r = _stub_rubric()
-    # Need an API key in config to construct
-    with patch.dict("os.environ", {"OPENAI_API_KEY": "fake"}, clear=False):
+    # Need an API key in config to construct; neutralize any global
+    # visual_critic.default override so rubric-driven routing is what's tested.
+    with patch.dict("os.environ", {"OPENAI_API_KEY": "fake"}, clear=False), \
+            patch("topos.config.load_effective_config", return_value={"visual_critic": {}}):
         c = make_critic(r)
     assert isinstance(c, OpenAIVisionCritic)
 
