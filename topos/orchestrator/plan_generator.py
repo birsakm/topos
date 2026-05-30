@@ -17,12 +17,6 @@ _SKILL_BY_TASK = {
     # Design agent: pure design.json author. Doesn't write Python so no bpy_docs;
     # gets texture skill so it knows the optional `texture` field exists.
     "design": ["topos_design_articulated", "topos_texture_creator"],
-    # Part agents: write the geometry Python. Get bpy_docs for API lookup
-    # (P2c), texture skill for the optional texture_<name>() function, and
-    # blender_pitfalls so the agent knows about the transform_apply default-
-    # bake trap (Pelvis ridge bars debacle, May 2026) and friends before it
-    # composes a multi-primitive part.
-    "part": ["topos_part_geometry", "topos_bpy_docs", "topos_texture_creator", "topos_blender_pitfalls"],
     # Build agent: stitches parts together, also a Python author. Gets
     # geometry_contracts (fill-ratio / inter-part collision / cavity-fit) so
     # it can emit the corresponding validation blocks. mesh_islands is a
@@ -36,17 +30,6 @@ _SKILL_BY_TASK = {
     # area, can still benefit from bpy_docs (mathutils etc.).
     "joints": ["topos_joints_creator", "topos_bpy_docs"],
 }
-
-# Hardware-related part name keywords → add topos_furniture_hardware
-_HARDWARE_KEYWORDS = {"handle", "pull", "knob", "grip", "hinge", "latch", "catch", "lock"}
-
-
-def _skills_for_part(part_name: str) -> list[str]:
-    skills = list(_SKILL_BY_TASK["part"])
-    name_lower = part_name.lower()
-    if any(kw in name_lower for kw in _HARDWARE_KEYWORDS):
-        skills.append("topos_furniture_hardware")
-    return skills
 
 
 def generate_plan_articulated(spec: ProjectSpec) -> dict:
