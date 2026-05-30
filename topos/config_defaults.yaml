@@ -132,5 +132,21 @@ image_gen:
     max_retries: 2
     retry_base_wait_s: 5.0
 
+# Trajectory analysis (`topos analyze`) — a text-LLM synthesis step that is
+# provider-agnostic; nothing here is Gemini-locked.
+analysis:
+  # Provider: gemini | openai | anthropic. Set via:
+  #   topos config set analysis.backend openai
+  backend: gemini
+  # Model override; null = the chosen backend's default
+  # (gemini-3-flash-preview / gpt-5 / claude-sonnet-4-6).
+  model: null
+  # API keys are reused from the matching provider where possible
+  #   gemini    → GEMINI_API_KEY / visual_critic.gemini_vision.api_key / image_gen.gemini.api_key
+  #   openai    → OPENAI_API_KEY / visual_critic.openai_vision.api_key
+  #   anthropic → ANTHROPIC_API_KEY / analysis.anthropic.api_key
+  anthropic:
+    api_key: null
+
 orchestrator:
   max_parallel_tasks: 4

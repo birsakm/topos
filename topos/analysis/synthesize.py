@@ -1,8 +1,9 @@
-"""LLM-based synthesis of trajectory analysis using Gemini Flash.
+"""LLM-based synthesis of trajectory analysis.
 
 Calls ``extract_run_metrics`` for structured data, builds a compact prompt
-(< 8K tokens), sends it to the Gemini generateContent API, and returns a
-markdown report.
+(< 8K tokens), sends it to a configurable text-LLM provider (``gemini`` /
+``openai`` / ``anthropic`` — pick via ``analysis.backend`` config or the
+``--backend`` flag), and returns a markdown report. Defaults to Gemini Flash.
 """
 
 from __future__ import annotations
@@ -17,7 +18,16 @@ from ..agents.visual_critic.critic_utils import post_json_with_retries
 from .extract import RunAnalysis, extract_run_metrics
 
 
-_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+# Per-provider default model; override via analysis.model config or --model.
+_DEFAULT_MODELS = {
+    "gemini": "gemini-3-flash-preview",
+    "openai": "gpt-5",
+    "anthropic": "claude-sonnet-4-6",
+}
+
+_GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+_OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+_ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages"
 
 _SYNTHESIS_PROMPT = """\
 You are analyzing the trajectory of an AI-driven 3D articulated object generation pipeline.
@@ -62,23 +72,57 @@ Was the budget well-spent? Which tasks consumed disproportionate cost for their 
 """
 
 
-def _resolve_api_key() -> str:
-    """Resolve Gemini API key from env or config, same priority as GeminiVisionCritic."""
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key:
-        return api_key
+def _resolve_backend_and_model(backend: str | None, model: str | None) -> tuple[str, str]:
+    """Pick the analysis provider + model. Precedence: explicit arg >
+    ``analysis.*`` config > built-in default (gemini).
+
+    ``analysis.model`` is paired with ``analysis.backend``: if the caller
+    overrides the backend to a different provider, the config's model (meant
+    for the config's backend) is ignored in favour of the new backend's
+    default — a gpt-5 model id shouldn't leak onto an anthropic call.
+    """
+    asec = cfg.load_effective_config().get("analysis") or {}
+    cfg_backend = (asec.get("backend") or "gemini").lower()
+    resolved = (backend or cfg_backend).lower()
+    if resolved not in _DEFAULT_MODELS:
+        raise ValueError(
+            f"unknown analysis backend {resolved!r}; choose from {sorted(_DEFAULT_MODELS)}"
+        )
+    if model is None:
+        model = (asec.get("model") if resolved == cfg_backend else None) or _DEFAULT_MODELS[resolved]
+    return resolved, model
+
+
+def _resolve_api_key(backend: str) -> str:
+    """Resolve the API key for the chosen analysis provider from env or config,
+    reusing the keys other features already configure (Google/OpenAI keys aren't
+    feature-scoped, so a critic key works for analysis too)."""
     effective = cfg.load_effective_config()
-    critic_section = (effective.get("visual_critic") or {}).get("gemini_vision") or {}
-    if critic_section.get("api_key"):
-        return critic_section["api_key"]
-    ig_section = (effective.get("image_gen") or {}).get("gemini") or {}
-    if ig_section.get("api_key"):
-        return ig_section["api_key"]
-    raise RuntimeError(
-        "No Gemini API key found. Set GEMINI_API_KEY in env, or configure "
-        "visual_critic.gemini_vision.api_key or image_gen.gemini.api_key. "
-        "Get a key at https://aistudio.google.com/app/apikey."
-    )
+    vc = effective.get("visual_critic") or {}
+    if backend == "gemini":
+        key = (
+            os.environ.get("GEMINI_API_KEY")
+            or (vc.get("gemini_vision") or {}).get("api_key")
+            or ((effective.get("image_gen") or {}).get("gemini") or {}).get("api_key")
+        )
+        hint = "GEMINI_API_KEY, or visual_critic.gemini_vision.api_key, or image_gen.gemini.api_key"
+    elif backend == "openai":
+        key = (
+            os.environ.get("OPENAI_API_KEY")
+            or (vc.get("openai_vision") or {}).get("api_key")
+        )
+        hint = "OPENAI_API_KEY, or visual_critic.openai_vision.api_key"
+    elif backend == "anthropic":
+        key = (
+            os.environ.get("ANTHROPIC_API_KEY")
+            or ((effective.get("analysis") or {}).get("anthropic") or {}).get("api_key")
+        )
+        hint = "ANTHROPIC_API_KEY, or analysis.anthropic.api_key"
+    else:  # pragma: no cover — guarded by _resolve_backend_and_model
+        raise ValueError(f"unknown analysis backend {backend!r}")
+    if not key:
+        raise RuntimeError(f"No API key for analysis backend {backend!r}. Set one of: {hint}.")
+    return key
 
 
 def _build_metrics_json(analysis: RunAnalysis) -> str:
@@ -177,7 +221,7 @@ def _call_gemini(prompt: str, *, model: str, api_key: str, timeout_s: int = 120)
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4096},
     }
-    url = f"{_ENDPOINT_BASE}/{model}:generateContent?key={api_key}"
+    url = f"{_GEMINI_ENDPOINT_BASE}/{model}:generateContent?key={api_key}"
     response_bytes = post_json_with_retries(
         url=url,
         body=json.dumps(payload).encode("utf-8"),
@@ -200,16 +244,79 @@ def _call_gemini(prompt: str, *, model: str, api_key: str, timeout_s: int = 120)
     raise RuntimeError("Gemini response had no text part")
 
 
+def _call_openai(prompt: str, *, model: str, api_key: str, timeout_s: int = 120) -> str:
+    """Call OpenAI Chat Completions and return the text response. (No temperature
+    or token cap set — reasoning models like gpt-5 reject non-default values.)"""
+    payload = {"model": model, "messages": [{"role": "user", "content": prompt}]}
+    response_bytes = post_json_with_retries(
+        url=_OPENAI_ENDPOINT,
+        body=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        timeout_s=timeout_s,
+        max_retries=2,
+        retry_base_wait_s=15.0,
+        label="analyze",
+    )
+    envelope = json.loads(response_bytes)
+    choices = envelope.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"OpenAI returned no choices. keys={list(envelope)}")
+    content = (choices[0].get("message") or {}).get("content")
+    if not isinstance(content, str):
+        raise RuntimeError("OpenAI response had no message content")
+    return content
+
+
+def _call_anthropic(prompt: str, *, model: str, api_key: str, timeout_s: int = 120) -> str:
+    """Call the Anthropic Messages API and return the text response."""
+    payload = {
+        "model": model,
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    response_bytes = post_json_with_retries(
+        url=_ANTHROPIC_ENDPOINT,
+        body=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        },
+        timeout_s=timeout_s,
+        max_retries=2,
+        retry_base_wait_s=15.0,
+        label="analyze",
+    )
+    envelope = json.loads(response_bytes)
+    for block in envelope.get("content") or []:
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            return block["text"]
+    raise RuntimeError(f"Anthropic response had no text block. keys={list(envelope)}")
+
+
+_DISPATCH = {"gemini": _call_gemini, "openai": _call_openai, "anthropic": _call_anthropic}
+
+
+def _synthesize(prompt: str, *, backend: str, model: str, api_key: str, timeout_s: int = 120) -> str:
+    return _DISPATCH[backend](prompt, model=model, api_key=api_key, timeout_s=timeout_s)
+
+
 def analyze_run(
     workspace: Path,
     *,
-    model: str = "gemini-3-flash-preview",
+    backend: str | None = None,
+    model: str | None = None,
 ) -> str:
-    """Full analysis: extract metrics, call Gemini, return markdown report.
+    """Full analysis: extract metrics, call the configured text-LLM provider,
+    return a markdown report.
 
-    Returns the markdown report as a string. Cost is ~$0.01-0.05 per call.
+    ``backend`` is one of ``gemini`` / ``openai`` / ``anthropic`` (default:
+    ``analysis.backend`` config, else gemini); ``model`` overrides the
+    per-provider default. Returns the markdown report as a string. Cost is
+    ~$0.01-0.05 per call.
     """
-    api_key = _resolve_api_key()
+    backend, model = _resolve_backend_and_model(backend, model)
+    api_key = _resolve_api_key(backend)
     analysis = extract_run_metrics(workspace)
 
     prompt = _SYNTHESIS_PROMPT.format(
@@ -220,7 +327,7 @@ def analyze_run(
     )
 
     start = time.monotonic()
-    report_text = _call_gemini(prompt, model=model, api_key=api_key)
+    report_text = _synthesize(prompt, backend=backend, model=model, api_key=api_key)
     duration = time.monotonic() - start
 
     # Prepend a header with run summary
@@ -232,7 +339,7 @@ def analyze_run(
         f"**Wall time:** {analysis.total_wall_time_s:.0f}s  \n"
         f"**Iterations:** {analysis.iterations}  \n"
         f"**Parts:** {analysis.n_parts}  |  **Joints:** {analysis.n_joints}  \n"
-        f"**Analysis model:** {model}  |  **Analysis time:** {duration:.1f}s\n\n"
+        f"**Analysis model:** {backend}/{model}  |  **Analysis time:** {duration:.1f}s\n\n"
         f"---\n\n"
     )
 

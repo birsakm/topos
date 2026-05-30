@@ -734,9 +734,13 @@ def analyze(
     slug: str = typer.Argument(..., help="Project slug to analyze"),
     base: Path = typer.Option(None, "--base", help="Base dir for workspaces (default: ./outputs)"),
     save: bool = typer.Option(False, "--save", help="Also save report to outputs/<slug>/analysis.md"),
+    backend: str = typer.Option(
+        None, "--backend",
+        help="Analysis LLM provider: gemini | openai | anthropic (default: analysis.backend config, else gemini).",
+    ),
     model: str = typer.Option(
-        "gemini-3-flash-preview", "--model",
-        help="Gemini model for synthesis (default: gemini-3-flash-preview)",
+        None, "--model",
+        help="Model override for synthesis (default: the chosen backend's default model).",
     ),
     extract_only: bool = typer.Option(
         False, "--extract-only",
@@ -746,7 +750,8 @@ def analyze(
     """Analyze agent trajectories from a completed run.
 
     Extracts structured metrics from trajectory files and (unless --extract-only)
-    calls Gemini Flash to synthesize an actionable analysis report.
+    calls a configurable text-LLM provider (gemini / openai / anthropic) to
+    synthesize an actionable analysis report.
     """
     from .analysis.extract import extract_run_metrics
     from .workspace import Workspace
@@ -772,8 +777,8 @@ def analyze(
 
     typer.echo(f"=== analyzing {slug} ===")
     try:
-        report_md = analyze_run(ws.root, model=model)
-    except RuntimeError as e:
+        report_md = analyze_run(ws.root, backend=backend, model=model)
+    except (RuntimeError, ValueError) as e:
         typer.echo(f"FAIL  {e}", err=True)
         raise typer.Exit(code=1)
 
