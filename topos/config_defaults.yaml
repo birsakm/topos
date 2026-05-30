@@ -131,6 +131,15 @@ image_gen:
     # retried attempts are queue waits, not billed image generations.
     max_retries: 2
     retry_base_wait_s: 5.0
+  # Alternative provider — select with `topos config set image_gen.default openai`.
+  openai:
+    # Auth: OPENAI_API_KEY env preferred, else image_gen.openai.api_key, else
+    # visual_critic.openai_vision.api_key (OpenAI keys aren't feature-scoped).
+    api_key: null
+    model: gpt-image-1   # text->image via /v1/images/generations; image-conditioned via /v1/images/edits
+    timeout_s: 180
+    max_retries: 2
+    retry_base_wait_s: 5.0
 
 # Trajectory analysis (`topos analyze`) — a text-LLM synthesis step that is
 # provider-agnostic; nothing here is Gemini-locked.

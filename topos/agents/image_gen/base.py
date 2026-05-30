@@ -71,13 +71,19 @@ def make_backend(name: str | None = None) -> ImageGenBackend:
     if name == "gemini":
         from .gemini import GeminiBackend
         return GeminiBackend.from_config()
+    if name == "openai":
+        from .openai import OpenAIImageBackend
+        return OpenAIImageBackend.from_config()
     if name == "stub":
         if not os.environ.get("TOPOS_ALLOW_STUB_IMAGE_GEN"):
             gem_conf = image_gen_conf.get("gemini") or {}
+            openai_conf = image_gen_conf.get("openai") or {}
             real_key_available = bool(
                 os.environ.get("GEMINI_API_KEY")
                 or os.environ.get("GOOGLE_API_KEY")
+                or os.environ.get("OPENAI_API_KEY")
                 or gem_conf.get("api_key")
+                or openai_conf.get("api_key")
             )
             if real_key_available:
                 raise ValueError(
