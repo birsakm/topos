@@ -19,6 +19,7 @@ from pathlib import Path
 from .. import config as cfg
 from .._fs_diff import new_or_modified, snapshot_mtimes
 from ..process import run_process_with_watchdog
+from ._dialect import CLAUDE_STREAM
 from ._rate_limit import TokenBucket, make_bucket_from_config
 from ._utils import assert_prompt_within_limit, classify_exit
 from .base import AgentRunResult, AuthMode, McpServerConfig
@@ -381,9 +382,7 @@ class ClaudeCLIBackend:
             soft_timeout_s=timeout_s or self.default_timeout_s,
             idle_grace_s=self.watchdog_idle_grace_s,
             hard_max_s=self.watchdog_hard_max_s,
-            activity_event_substrings=['"type":"assistant"', '"type":"user"', '"type":"stream_event"'],
-            tool_pending_substrings=('"type":"tool_use"', '"type":"tool_result"'),
-            done_event_substring='"type":"result"',
+            **CLAUDE_STREAM.watchdog_kwargs(),
         )
         duration_s = time.monotonic() - start
         files_modified = new_or_modified(workspace, before)
