@@ -142,6 +142,65 @@ def test_run_gives_up_after_max_retries():
     assert call_count["n"] == 3
 
 
+def test_run_retries_on_timeout_then_succeeds():
+    """A watchdog idle-kill (exit_reason='timeout') is usually a transient
+    single-turn stall — retry it instead of failing the task outright."""
+    from topos.backends.claude_cli import ClaudeCLIBackend
+    backend = ClaudeCLIBackend(name="claude", max_timeout_retries=1, timeout_retry_wait_s=0.01)
+    call_count = {"n": 0}
+
+    def fake_once(**kwargs):
+        call_count["n"] += 1
+        return _make_result("timeout") if call_count["n"] < 2 else _make_result("completed")
+
+    with patch.object(backend, "_run_once", side_effect=fake_once), \
+         patch("topos.backends.claude_cli.time.sleep"):
+        r = backend.run(
+            prompt="x", workspace=__import__("pathlib").Path("/tmp"),
+            allowed_tools=[], mcp_servers=[],
+        )
+    assert r.exit_reason == "completed"
+    assert call_count["n"] == 2, "timeout should be retried once"
+
+
+def test_run_gives_up_after_timeout_retries():
+    from topos.backends.claude_cli import ClaudeCLIBackend
+    backend = ClaudeCLIBackend(name="claude", max_timeout_retries=1, timeout_retry_wait_s=0.01)
+    call_count = {"n": 0}
+
+    def fake_once(**kwargs):
+        call_count["n"] += 1
+        return _make_result("timeout")
+
+    with patch.object(backend, "_run_once", side_effect=fake_once), \
+         patch("topos.backends.claude_cli.time.sleep"):
+        r = backend.run(
+            prompt="x", workspace=__import__("pathlib").Path("/tmp"),
+            allowed_tools=[], mcp_servers=[],
+        )
+    assert r.exit_reason == "timeout"
+    assert call_count["n"] == 2, "max_timeout_retries=1 → 2 total attempts"
+
+
+def test_run_does_not_retry_on_plain_error():
+    """An 'error' exit (not quota, not timeout) must NOT be retried."""
+    from topos.backends.claude_cli import ClaudeCLIBackend
+    backend = ClaudeCLIBackend(name="claude", max_quota_retries=3, max_timeout_retries=1)
+    call_count = {"n": 0}
+
+    def fake_once(**kwargs):
+        call_count["n"] += 1
+        return _make_result("error")
+
+    with patch.object(backend, "_run_once", side_effect=fake_once):
+        r = backend.run(
+            prompt="x", workspace=__import__("pathlib").Path("/tmp"),
+            allowed_tools=[], mcp_servers=[],
+        )
+    assert r.exit_reason == "error"
+    assert call_count["n"] == 1
+
+
 def test_make_critic_honors_global_override():
     """Setting ``visual_critic.default`` overrides every rubric's
     ``judge_backend:`` field. One-knob flip from Claude → Gemini for the

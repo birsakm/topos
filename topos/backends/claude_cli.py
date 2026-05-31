@@ -85,6 +85,45 @@ def _parse_stream_json_final_result(stdout: str) -> dict | None:
     return last_result
 
 
+def _stream_events(stdout: str) -> list[dict]:
+    """Parse the stream-json buffer (JSONL or single JSON array) into a list of
+    event dicts; malformed lines are skipped."""
+    if not stdout or not stdout.strip():
+        return []
+    try:
+        whole = json.loads(stdout)
+        if isinstance(whole, list):
+            return [e for e in whole if isinstance(e, dict)]
+        if isinstance(whole, dict):
+            return [whole]
+    except json.JSONDecodeError:
+        pass
+    out: list[dict] = []
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict):
+            out.append(ev)
+    return out
+
+
+def _fallback_usage(events: list[dict]) -> dict:
+    """When there is no terminal ``result`` envelope (agent killed mid-turn),
+    recover usage from the last ``assistant`` event so a killed run still
+    reports tokens for post-mortem (cost stays 0 under subscription auth)."""
+    for ev in reversed(events):
+        if ev.get("type") == "assistant":
+            usage = (ev.get("message") or {}).get("usage")
+            if isinstance(usage, dict):
+                return usage
+    return {}
+
+
 _SHARED_RATE_BUCKETS: dict[str, TokenBucket | None] = {}
 _SHARED_RATE_LOCK = __import__("threading").Lock()
 
@@ -130,17 +169,25 @@ class ClaudeCLIBackend:
     permission_mode: str = "bypassPermissions"
     max_quota_retries: int = 3
     quota_retry_wait_s: float = 60.0
+    # A watchdog idle-kill (exit_reason=="timeout") is often a transient
+    # transport/CLI stall on a single turn, not a wedged agent — retry it a
+    # bounded number of times before giving up. Without this a one-off hang on
+    # the root design task fails the whole run.
+    max_timeout_retries: int = 1
+    timeout_retry_wait_s: float = 10.0
     rate_per_minute: float | None = None
     # Watchdog: ``timeout_s`` is the SOFT deadline. Past it, kill only when
     # the agent has been *idle* (no workspace file mtime changes, no NEW
     # stream-json work events) for ``watchdog_idle_grace_s``. "Work events"
-    # = ``"type":"assistant"`` and ``"type":"user"`` (tool result); we
-    # explicitly EXCLUDE ``rate_limit_event`` and ``system`` so a CLI
-    # stuck emitting only quota heartbeats correctly idle-trips. Reason:
-    # complex fix tasks (21-part assembly) legitimately run 15-25 min,
-    # but a stuck agent stops doing real turns. ``watchdog_hard_max_s``
-    # is an absolute ceiling regardless of activity — last-resort safety
-    # so a runaway can't burn the whole 5h subscription window.
+    # = ``"type":"assistant"`` / ``"type":"user"`` (tool result) / partial
+    # ``"type":"stream_event"`` deltas (we run with --include-partial-messages
+    # so an in-progress long turn keeps refreshing the idle timer instead of
+    # looking dead). We explicitly EXCLUDE ``rate_limit_event`` and ``system``
+    # so a CLI stuck emitting only quota heartbeats correctly idle-trips.
+    # Reason: complex fix tasks (21-part assembly) legitimately run 15-25 min,
+    # but a stuck agent stops streaming entirely. ``watchdog_hard_max_s`` is
+    # an absolute ceiling regardless of activity — last-resort safety so a
+    # runaway can't burn the whole 5h subscription window.
     watchdog_idle_grace_s: int = 300
     watchdog_hard_max_s: int = 3600
 
@@ -161,6 +208,8 @@ class ClaudeCLIBackend:
             permission_mode=merged.get("permission_mode", "bypassPermissions"),
             max_quota_retries=int(merged.get("max_quota_retries", 3)),
             quota_retry_wait_s=float(merged.get("quota_retry_wait_s", 60.0)),
+            max_timeout_retries=int(merged.get("max_timeout_retries", 1)),
+            timeout_retry_wait_s=float(merged.get("timeout_retry_wait_s", 10.0)),
             rate_per_minute=float(rate_raw) if rate_raw else None,
             watchdog_idle_grace_s=int(merged.get("watchdog_idle_grace_s", 300)),
             watchdog_hard_max_s=int(merged.get("watchdog_hard_max_s", 3600)),
@@ -182,12 +231,14 @@ class ClaudeCLIBackend:
 
         The actual subprocess invocation is in ``_run_once``. This wrapper
         handles the cross-attempt concerns (token bucket acquire, retry on
-        quota, exponential backoff)."""
+        quota or transient timeout, exponential backoff)."""
         last_result: AgentRunResult | None = None
-        wait_s = self.quota_retry_wait_s
+        quota_wait_s = self.quota_retry_wait_s
+        quota_left = self.max_quota_retries
+        timeout_left = self.max_timeout_retries
         bucket = _shared_bucket(self.rate_per_minute)
 
-        for attempt in range(self.max_quota_retries + 1):
+        while True:
             # Throttle: don't even start a request if the token bucket
             # says we're over the per-minute cap. Pre-emptive — saves a
             # round-trip + the user's subscription window.
@@ -204,23 +255,32 @@ class ClaudeCLIBackend:
                 system_prompt_append=system_prompt_append,
                 trajectory_dir=trajectory_dir,
             )
-            if last_result.exit_reason != "quota":
-                return last_result
 
-            # Quota hit — back off and try again. Doubles each retry.
-            if attempt < self.max_quota_retries:
+            # Quota hit — back off (exponential) and try again.
+            if last_result.exit_reason == "quota" and quota_left > 0:
                 print(
-                    f"[claude_cli] quota hit (attempt {attempt + 1}/"
-                    f"{self.max_quota_retries + 1}); sleeping {wait_s:.0f}s "
-                    f"before retry. Reset is typically a 5h rolling window for "
-                    f"Pro / Max subscriptions."
+                    f"[claude_cli] quota hit; sleeping {quota_wait_s:.0f}s before "
+                    f"retry ({quota_left} left). Reset is typically a 5h rolling "
+                    f"window for Pro / Max subscriptions."
                 )
-                time.sleep(wait_s)
-                wait_s *= 2
+                time.sleep(quota_wait_s)
+                quota_wait_s *= 2
+                quota_left -= 1
+                continue
 
-        # Exhausted retries — return the last quota result so the caller
-        # sees exit_reason="quota" and can decide (skip / defer / abort).
-        return last_result  # type: ignore[return-value]
+            # Watchdog idle-kill — usually a transient single-turn transport/CLI
+            # stall, not a wedged agent. Retry a bounded number of times.
+            if last_result.exit_reason == "timeout" and timeout_left > 0:
+                print(
+                    f"[claude_cli] watchdog timeout (likely a transient stall); "
+                    f"sleeping {self.timeout_retry_wait_s:.0f}s before retry "
+                    f"({timeout_left} left)."
+                )
+                time.sleep(self.timeout_retry_wait_s)
+                timeout_left -= 1
+                continue
+
+            return last_result
 
     def _run_once(
         self,
@@ -254,6 +314,10 @@ class ClaudeCLIBackend:
             # single-envelope shape keep working.
             "--output-format", "stream-json",
             "--verbose",          # required by claude CLI for stream-json
+            # Emit partial ``stream_event`` deltas as a turn generates, so the
+            # watchdog can tell "model is actively producing a long turn" from
+            # "model call hung" — the former keeps refreshing the idle timer.
+            "--include-partial-messages",
             "--no-session-persistence",
             "--permission-mode", self.permission_mode,
             "--add-dir", str(workspace),
@@ -317,31 +381,26 @@ class ClaudeCLIBackend:
             soft_timeout_s=timeout_s or self.default_timeout_s,
             idle_grace_s=self.watchdog_idle_grace_s,
             hard_max_s=self.watchdog_hard_max_s,
-            activity_event_substrings=['"type":"assistant"', '"type":"user"'],
+            activity_event_substrings=['"type":"assistant"', '"type":"user"', '"type":"stream_event"'],
             tool_pending_substrings=('"type":"tool_use"', '"type":"tool_result"'),
             done_event_substring='"type":"result"',
         )
         duration_s = time.monotonic() - start
         files_modified = new_or_modified(workspace, before)
 
-        # Persist the raw stream-json event log + extract the final result
-        # event for backwards-compat with consumers that read transcript.json.
-        # claude CLI's stream-json output ships either as JSONL or as one
-        # JSON array; normalize to JSONL for ``transcript.jsonl`` so per-turn
-        # readers don't have to handle both shapes.
+        # Persist the stream-json event log + extract the final result event
+        # for backwards-compat with consumers that read transcript.json.
+        # Normalize to JSONL for ``transcript.jsonl``, and DROP the partial
+        # ``stream_event`` deltas (kept only live, for the watchdog) so
+        # transcripts stay readable / small.
         transcript_jsonl_path = trajectory_dir / "transcript.jsonl"
         transcript_path = trajectory_dir / "transcript.json"
-        try:
-            maybe_array = json.loads(proc.stdout) if proc.stdout.strip() else None
-        except json.JSONDecodeError:
-            maybe_array = None
-        if isinstance(maybe_array, list):
-            transcript_jsonl_path.write_text(
-                "\n".join(json.dumps(ev, separators=(",", ":")) for ev in maybe_array) + "\n",
-                encoding="utf-8",
-            )
-        else:
-            transcript_jsonl_path.write_text(proc.stdout, encoding="utf-8")
+        events = _stream_events(proc.stdout)
+        persisted = [e for e in events if e.get("type") != "stream_event"]
+        transcript_jsonl_path.write_text(
+            "".join(json.dumps(e, separators=(",", ":")) + "\n" for e in persisted),
+            encoding="utf-8",
+        )
         parsed = _parse_stream_json_final_result(proc.stdout)
         if parsed is not None:
             transcript_path.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
@@ -376,6 +435,10 @@ class ClaudeCLIBackend:
                 usage_dict = parsed["usage"]
             if isinstance(parsed.get("modelUsage"), dict):
                 model_usage = parsed["modelUsage"]
+        else:
+            # Killed mid-turn (no terminal result envelope): recover token usage
+            # from the last assistant event so the run still reports tokens.
+            usage_dict = _fallback_usage(events)
 
         return AgentRunResult(
             success=(exit_reason == "completed"),

@@ -63,7 +63,10 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
             "Read", "Edit", "Write", "Glob",
             "WebSearch", "WebFetch",
         ],
-        "timeout_s": 300,
+        # Soft deadline. A complex multi-part design (or a model doing a long
+        # reasoning turn) can run past 5 min; the partial-message watchdog keeps
+        # it alive as long as it's actually streaming, but give real headroom.
+        "timeout_s": 600,
     })
 
     # 02_subgraph_parts — at runtime expands into per-part agent / texture /

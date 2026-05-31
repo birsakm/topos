@@ -19,7 +19,40 @@ from __future__ import annotations
 
 import json
 
-from topos.backends.claude_cli import _parse_stream_json_final_result
+from topos.backends.claude_cli import (
+    _fallback_usage,
+    _parse_stream_json_final_result,
+    _stream_events,
+)
+
+
+def test_stream_events_parses_jsonl_and_keeps_all_types():
+    stdout = (
+        '{"type":"system"}\n'
+        '{"type":"stream_event","event":{"type":"content_block_delta"}}\n'
+        '{"type":"assistant","message":{"usage":{"output_tokens":5}}}\n'
+        '{"type":"result","total_cost_usd":0.0}\n'
+    )
+    events = _stream_events(stdout)
+    assert [e["type"] for e in events] == ["system", "stream_event", "assistant", "result"]
+
+
+def test_fallback_usage_recovers_from_last_assistant_when_killed_midturn():
+    # No terminal "result" event (agent killed mid-turn) — usage must still be
+    # recoverable from the last assistant event for post-mortem.
+    stdout = (
+        '{"type":"system"}\n'
+        '{"type":"assistant","message":{"usage":{"input_tokens":3,"output_tokens":10}}}\n'
+        '{"type":"stream_event","event":{"type":"content_block_delta"}}\n'
+    )
+    events = _stream_events(stdout)
+    assert _parse_stream_json_final_result(stdout) is None  # no result envelope
+    usage = _fallback_usage(events)
+    assert usage == {"input_tokens": 3, "output_tokens": 10}
+
+
+def test_fallback_usage_empty_when_no_assistant():
+    assert _fallback_usage(_stream_events('{"type":"system"}\n')) == {}
 
 
 def test_extract_final_result_from_typical_stream():
