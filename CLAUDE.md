@@ -35,7 +35,7 @@ Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.
 ## Architecture in one screen
 
 ```
-L7 CLI                   topos doctor|config|init|plan|run|cost|freeze
+L7 CLI                   topos make (the entry) | run | doctor | config | cost | analyze | skill | bpy-docs
 L6 Domain workflows      rigid / articulated  (each is a plan.json template + rubric + examples)
 L5 Orchestrator          DAG runner (AgentTask | ToolTask | SubgraphTask), iter_policy fix-loop, runtime expansion via topos/orchestrator/expand.py (ADR-0008)
 L4 Critic                Critic protocol; ClaudeVisionCritic default; rubric YAML decoupled from code
@@ -71,9 +71,10 @@ L0 Substrate             Workspace · Blender runtime (stateless + hot-pool stub
 ```bash
 topos doctor                                       # check python / claude CLI / blender / config
 topos config init / get / set / show / edit        # config layered (defaults < user < repo < env)
-topos init <slug> --domain <d> --from-example <e>  # scaffold from examples/<e>/
-topos make "<NL prompt>" [--slug <s>] [--no-run]   # single-prompt entry: spec agent → workspace → auto-run
-topos run <slug> [--base <outputs_dir>]            # execute plan.json through the DAG runner
+topos make "<NL prompt>" [-i ref.png ...] [--slug <s>] [--no-run]
+                                                   # THE entry: prompt (+ optional reference images) → workspace → auto-run
+                                                   #   writes prompts/intent.md + fixed articulated plan; design agent derives parts at runtime (no spec step)
+topos run <slug> [--base <outputs_dir>]            # re-execute an existing workspace's plan.json (e.g. after --no-run)
 topos cost <slug> [--by-model]                     # last-run cost & token breakdown
 topos skill list                                   # list shipped topos_* skills
 topos skill install --target claude                # copy topos_* skills to ~/.claude/skills/ for native discovery

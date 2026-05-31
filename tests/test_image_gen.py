@@ -455,20 +455,9 @@ def test_plan_generator_design_agent_has_texture_skill():
     """Post ADR-0008: per-part skills live in expand.py
     (see test_expand_articulated_parts.py). plan_generator only asserts the
     design agent's skill set + that the parts subgraph is wired."""
-    from topos.agents.spec import ProjectSpec, PartSpec
     from topos.orchestrator.plan_generator import generate_plan_articulated
 
-    spec = ProjectSpec(
-        slug="t",
-        domain="articulated",
-        robot_name="t",
-        intent_md="x",
-        parts=[
-            PartSpec(name="Frame", lower_name="frame", extras_md="..."),
-            PartSpec(name="Handle", lower_name="handle", extras_md="..."),
-        ],
-    )
-    plan = generate_plan_articulated(spec)
+    plan = generate_plan_articulated("t")
     by_id = {t["id"]: t for t in plan["tasks"]}
 
     design = by_id["01_agent_design"]
@@ -479,18 +468,9 @@ def test_plan_generator_emits_subgraph_for_parts():
     """Post ADR-0008: per-part fan-out (agents/textures/judges) is no longer
     in plan.json. Instead, plan_generator emits a single SubgraphTask that
     the runner expands from design.json at runtime."""
-    from topos.agents.spec import ProjectSpec, PartSpec
     from topos.orchestrator.plan_generator import generate_plan_articulated
 
-    spec = ProjectSpec(
-        slug="t", domain="articulated", robot_name="t", intent_md="x",
-        parts=[
-            PartSpec(name="Frame", lower_name="frame", extras_md="..."),
-            PartSpec(name="Drawer", lower_name="drawer", extras_md="..."),
-            PartSpec(name="Handle", lower_name="handle", extras_md="..."),
-        ],
-    )
-    plan = generate_plan_articulated(spec)
+    plan = generate_plan_articulated("t")
     by_id = {t["id"]: t for t in plan["tasks"]}
 
     # No per-part tasks at plan time
@@ -515,15 +495,10 @@ def test_plan_generator_validates_through_plan_schema():
     """Cross-check: the dict plan_generator produces validates through the
     pydantic Plan schema (no extra-fields errors), so `topos make` output
     can be saved + reloaded without surgery."""
-    from topos.agents.spec import ProjectSpec, PartSpec
     from topos.orchestrator.plan_generator import generate_plan_articulated
     from topos.orchestrator.plan_schema import Plan, topo_sort
 
-    spec = ProjectSpec(
-        slug="t", domain="articulated", robot_name="t", intent_md="x",
-        parts=[PartSpec(name="Frame", lower_name="frame", extras_md="...")],
-    )
-    plan_dict = generate_plan_articulated(spec)
+    plan_dict = generate_plan_articulated("t")
     plan = Plan.model_validate(plan_dict)
     ordered = topo_sort(plan.materialised())
 

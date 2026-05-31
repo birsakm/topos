@@ -176,138 +176,100 @@ def config_edit(
 
 # ---------- project lifecycle ----------
 
-def _resolve_example_dir(from_example: str) -> Path:
-    """Locate an example by name. Looks under ``./examples/<name>`` and in the
-    installed ``topos`` package's ``examples/`` resource."""
-    local = Path.cwd() / "examples" / from_example
-    if local.is_dir():
-        return local
-    # Walk up looking for repo root with examples/
-    cur = Path.cwd().resolve()
-    for d in [cur, *cur.parents]:
-        candidate = d / "examples" / from_example
-        if candidate.is_dir():
-            return candidate
-    raise FileNotFoundError(
-        f"could not find examples/{from_example}/ under cwd or its parents"
-    )
+_SLUG_STOPWORDS = {
+    "a", "an", "the", "of", "with", "and", "or", "for", "that", "this",
+    "these", "those", "is", "are", "was", "were", "be", "to", "in", "on",
+    "at", "by", "from", "as",
+}
 
 
-@app.command()
-def init(
-    slug: str = typer.Argument(..., help="Project slug (lowercase alnum, _, -)"),
-    domain: str = typer.Option("rigid", "--domain", help="Domain: rigid|articulated|scene|city"),
-    from_example: str | None = typer.Option(
-        None, "--from-example",
-        help="Initialise from an example directory (copies spec.yaml and any pre-rendered plan.json).",
-    ),
-    base: Path = typer.Option(
-        None, "--base",
-        help="Base directory for workspaces (default: ./outputs).",
-    ),
-):
-    """Create outputs/<slug>/ with the canonical layout and (optionally)
-    seed it from examples/<from-example>/."""
-    ws = Workspace.create(slug, domain, base=base, exist_ok=False)
-    if from_example:
-        ex_dir = _resolve_example_dir(from_example)
-        for child in ex_dir.iterdir():
-            dst = ws.root / child.name
-            if child.is_dir():
-                shutil.copytree(child, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy(child, dst)
-        typer.echo(f"seeded {ws.root} from {ex_dir}")
-    typer.echo(f"created workspace: {ws.root}")
+def _derive_slug(prompt: str) -> str:
+    """Derive a workspace slug from the first few content words of the prompt.
 
-
-@app.command()
-def plan(
-    slug: str = typer.Argument(...),
-    base: Path = typer.Option(None, "--base"),
-    force: bool = typer.Option(False, "--force", help="Overwrite existing plan.json"),
-):
-    """Render plan.json from spec.yaml using the workspace's domain template.
-
-    Stage 0 path: if the workspace already has a plan.json (e.g. seeded by an
-    example), this is a no-op unless --force. Jinja rendering from a domain
-    template arrives with Stage 1.
+    "a palace-style three-drawer cabinet" → "palace_style_three_drawer".
     """
-    ws = Workspace.locate(slug, base=base)
-    if ws.plan_path.is_file() and not force:
-        typer.echo(f"plan already exists: {ws.plan_path}; use --force to overwrite")
-        return
-    if not ws.spec_path.is_file():
-        typer.echo(f"no spec.yaml at {ws.spec_path}; cannot render plan")
-        raise typer.Exit(code=1)
-    typer.echo(
-        "spec→plan jinja rendering not implemented yet (Stage 1). "
-        "For Stage 0, seed plan.json from an example via `topos init --from-example`."
-    )
-    raise typer.Exit(code=2)
+    import re
+    words = [w for w in re.findall(r"[a-z0-9]+", prompt.lower())
+             if w not in _SLUG_STOPWORDS][:4]
+    return "_".join(words) or "object"
+
+
+def _copy_reference_images(images: "list[Path] | None", prompts_dir: Path) -> int:
+    """Copy reference images into ``prompts/references/`` with an ``all_`` prefix
+    so the part-agent reference-image auto-discovery picks them up for every
+    part. Returns how many were copied."""
+    if not images:
+        return 0
+    refs = prompts_dir / "references"
+    refs.mkdir(parents=True, exist_ok=True)
+    ok_ext = {".png", ".jpg", ".jpeg", ".webp"}
+    n = 0
+    for img in images:
+        if not img.is_file():
+            typer.echo(f"WARN: reference image not found: {img}", err=True)
+            continue
+        if img.suffix.lower() not in ok_ext:
+            typer.echo(f"WARN: unsupported image type {img.suffix!r} (use png/jpg/webp): {img}", err=True)
+            continue
+        shutil.copy(img, refs / f"all_{img.name}")
+        n += 1
+    return n
 
 
 @app.command()
 def make(
-    prompt: str = typer.Argument(..., help="Natural-language description of what to build"),
-    slug: str = typer.Option(None, "--slug", help="Workspace slug (default: spec agent derives from prompt)"),
-    base: Path = typer.Option(None, "--base", help="Base dir for workspaces (default: ./outputs)"),
-    no_run: bool = typer.Option(False, "--no-run", help="Generate workspace + plan.json but don't auto-run"),
+    prompt: str = typer.Argument(..., help="What to build, in natural language."),
+    image: list[Path] = typer.Option(
+        None, "--image", "-i",
+        help="Reference image(s) guiding geometry / proportions / style. Copied "
+             "into the workspace and shown to every part agent. Repeatable.",
+    ),
+    slug: str = typer.Option(None, "--slug", help="Workspace slug (default: derived from the prompt)."),
+    base: Path = typer.Option(None, "--base", help="Base dir for workspaces (default: ./outputs)."),
+    no_run: bool = typer.Option(False, "--no-run", help="Create the workspace but don't auto-run."),
 ):
-    """Single-prompt entry: NL → workspace → plan.json → run.
+    """Build 3D content from a single prompt (+ optional reference images).
 
-    Calls the spec agent (one short claude call) to derive a structured
-    project spec from the NL prompt, materialises the workspace (spec.yaml +
-    prompts/intent.md + prompts/extras_*.md + plan.json), then auto-invokes
-    `topos run` unless --no-run.
+    The one entry point. Writes the prompt to prompts/intent.md, copies any
+    reference images into prompts/references/, lays down the fixed articulated
+    plan, and runs the orchestrator. The design agent derives the parts from the
+    prompt (and any reference images) at runtime — there is no separate spec
+    step. A static object is just an articulated one the design agent gives no
+    joints.
     """
-    from .agents.spec import run_spec_agent
     from .backends.claude_cli import ClaudeCLIBackend
-    from .orchestrator.plan_generator import materialize_project_files
+    from .orchestrator.plan_generator import generate_plan_articulated
 
-    backend = ClaudeCLIBackend.from_config()
-    typer.echo(f"=== spec agent ===  (prompt: {prompt!r:.80}...)" if len(prompt) > 80 else f"=== spec agent ===  prompt: {prompt!r}")
-    spec = run_spec_agent(prompt, backend=backend)
-    if slug:
-        spec.slug = slug          # honor explicit --slug
-    typer.echo(f"  → slug={spec.slug}  domain={spec.domain}  parts={[p.name for p in spec.parts]}")
-
-    # Validate domain BEFORE creating the workspace so a NotImplementedError
-    # from the plan generator doesn't leave an orphan outputs/<slug>/.
-    _SUPPORTED_MAKE_DOMAINS = {"articulated"}
-    if spec.domain not in _SUPPORTED_MAKE_DOMAINS:
-        typer.echo(
-            f"`topos make` does not yet support domain {spec.domain!r} "
-            f"(supported: {sorted(_SUPPORTED_MAKE_DOMAINS)}). "
-            f"Scaffold manually via `topos init <slug> --domain {spec.domain} --from-example <name>`.",
-            err=True,
-        )
-        raise typer.Exit(code=2)
-
-    ws = Workspace.create(spec.slug, spec.domain, base=base, exist_ok=False)
+    slug = slug or _derive_slug(prompt)
+    ws = Workspace.create(slug, "articulated", base=base, exist_ok=False)
     try:
-        materialize_project_files(spec, ws.root)
+        prompts_dir = ws.root / "prompts"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
+        (prompts_dir / "intent.md").write_text(prompt.strip() + "\n", encoding="utf-8")
+        n_imgs = _copy_reference_images(image, prompts_dir)
+        ws.plan_path.write_text(json.dumps(generate_plan_articulated(slug), indent=2), encoding="utf-8")
     except Exception:
-        # Clean up the half-written workspace so the user doesn't have to.
-        shutil.rmtree(ws.root, ignore_errors=True)
+        shutil.rmtree(ws.root, ignore_errors=True)  # don't leave a half-written workspace
         raise
-    typer.echo(f"  → workspace ready at {ws.root}")
-    typer.echo(f"  → wrote spec.yaml, prompts/intent.md, prompts/extras_*.md, plan.json")
+
+    typer.echo(f"=== workspace ready: {ws.root} ===")
+    typer.echo(f"  → slug={slug}  domain=articulated")
+    typer.echo("  → wrote prompts/intent.md + plan.json"
+               + (f" + {n_imgs} reference image(s)" if n_imgs else ""))
 
     if no_run:
-        typer.echo(f"\nSkipping run (--no-run). To execute: topos run {spec.slug}" + (f" --base {base}" if base else ""))
+        typer.echo(f"\nSkipping run (--no-run). To execute: topos run {slug}" + (f" --base {base}" if base else ""))
         return
 
-    # Auto-run
-    typer.echo(f"\n=== auto-running {spec.slug} ===")
+    typer.echo(f"\n=== running {slug} ===")
     from .orchestrator.plan_schema import load_plan
     from .orchestrator.runner import Runner
     plan_obj = load_plan(ws.plan_path)
-    backends = {"claude": backend}
+    backends = {"claude": ClaudeCLIBackend.from_config()}
     runner = Runner(workspace=ws, plan=plan_obj, backends=backends,
                     event_sink=_maybe_event_sink())
     report = runner.run()
-    _print_run_report(spec.slug, report)
+    _print_run_report(slug, report)
     raise typer.Exit(code=0 if report.success else 1)
 
 
