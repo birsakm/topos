@@ -21,6 +21,7 @@ from .._fs_diff import new_or_modified, snapshot_mtimes
 from ..process import run_process_with_watchdog
 from .dialect import CLAUDE_STREAM
 from ._rate_limit import TokenBucket, make_bucket_from_config
+from ._retry import run_with_retries
 from ._utils import assert_prompt_within_limit, classify_exit
 from .base import AgentRunResult, AuthMode, McpServerConfig
 
@@ -230,23 +231,12 @@ class ClaudeCLIBackend:
     ) -> AgentRunResult:
         """Run with quota-aware retry + optional rate-limit throttle.
 
-        The actual subprocess invocation is in ``_run_once``. This wrapper
-        handles the cross-attempt concerns (token bucket acquire, retry on
-        quota or transient timeout, exponential backoff)."""
-        last_result: AgentRunResult | None = None
-        quota_wait_s = self.quota_retry_wait_s
-        quota_left = self.max_quota_retries
-        timeout_left = self.max_timeout_retries
+        The subprocess invocation is in ``_run_once``; the shared
+        ``run_with_retries`` owns the cross-attempt policy (token-bucket
+        acquire, retry on quota / transient watchdog timeout, backoff)."""
         bucket = _shared_bucket(self.rate_per_minute)
-
-        while True:
-            # Throttle: don't even start a request if the token bucket
-            # says we're over the per-minute cap. Pre-emptive — saves a
-            # round-trip + the user's subscription window.
-            if bucket is not None:
-                bucket.acquire()
-
-            last_result = self._run_once(
+        return run_with_retries(
+            lambda: self._run_once(
                 prompt=prompt,
                 workspace=workspace,
                 allowed_tools=allowed_tools,
@@ -255,33 +245,14 @@ class ClaudeCLIBackend:
                 env=env,
                 system_prompt_append=system_prompt_append,
                 trajectory_dir=trajectory_dir,
-            )
-
-            # Quota hit — back off (exponential) and try again.
-            if last_result.exit_reason == "quota" and quota_left > 0:
-                print(
-                    f"[claude_cli] quota hit; sleeping {quota_wait_s:.0f}s before "
-                    f"retry ({quota_left} left). Reset is typically a 5h rolling "
-                    f"window for Pro / Max subscriptions."
-                )
-                time.sleep(quota_wait_s)
-                quota_wait_s *= 2
-                quota_left -= 1
-                continue
-
-            # Watchdog idle-kill — usually a transient single-turn transport/CLI
-            # stall, not a wedged agent. Retry a bounded number of times.
-            if last_result.exit_reason == "timeout" and timeout_left > 0:
-                print(
-                    f"[claude_cli] watchdog timeout (likely a transient stall); "
-                    f"sleeping {self.timeout_retry_wait_s:.0f}s before retry "
-                    f"({timeout_left} left)."
-                )
-                time.sleep(self.timeout_retry_wait_s)
-                timeout_left -= 1
-                continue
-
-            return last_result
+            ),
+            # quota = subscription/API cap or transient server throttle (backoff);
+            # timeout = watchdog idle-kill, usually a transient single-turn stall.
+            retryable={"quota": self.max_quota_retries, "timeout": self.max_timeout_retries},
+            base_wait_s={"quota": self.quota_retry_wait_s, "timeout": self.timeout_retry_wait_s},
+            before_each=(bucket.acquire if bucket is not None else None),
+            label="claude_cli",
+        )
 
     def _run_once(
         self,

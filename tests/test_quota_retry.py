@@ -111,7 +111,7 @@ def test_run_retries_on_quota_then_succeeds():
         return _make_result("quota") if call_count["n"] < 3 else _make_result("completed")
 
     with patch.object(backend, "_run_once", side_effect=fake_once), \
-         patch("topos.backends.claude_cli.time.sleep") as fake_sleep:
+         patch("topos.backends._retry.time.sleep") as fake_sleep:
         r = backend.run(
             prompt="x", workspace=__import__("pathlib").Path("/tmp"),
             allowed_tools=[], mcp_servers=[],
@@ -133,7 +133,7 @@ def test_run_gives_up_after_max_retries():
         return _make_result("quota")
 
     with patch.object(backend, "_run_once", side_effect=fake_once), \
-         patch("topos.backends.claude_cli.time.sleep"):
+         patch("topos.backends._retry.time.sleep"):
         r = backend.run(
             prompt="x", workspace=__import__("pathlib").Path("/tmp"),
             allowed_tools=[], mcp_servers=[],
@@ -154,7 +154,7 @@ def test_run_retries_on_timeout_then_succeeds():
         return _make_result("timeout") if call_count["n"] < 2 else _make_result("completed")
 
     with patch.object(backend, "_run_once", side_effect=fake_once), \
-         patch("topos.backends.claude_cli.time.sleep"):
+         patch("topos.backends._retry.time.sleep"):
         r = backend.run(
             prompt="x", workspace=__import__("pathlib").Path("/tmp"),
             allowed_tools=[], mcp_servers=[],
@@ -173,7 +173,7 @@ def test_run_gives_up_after_timeout_retries():
         return _make_result("timeout")
 
     with patch.object(backend, "_run_once", side_effect=fake_once), \
-         patch("topos.backends.claude_cli.time.sleep"):
+         patch("topos.backends._retry.time.sleep"):
         r = backend.run(
             prompt="x", workspace=__import__("pathlib").Path("/tmp"),
             allowed_tools=[], mcp_servers=[],
@@ -199,6 +199,27 @@ def test_run_does_not_retry_on_plain_error():
         )
     assert r.exit_reason == "error"
     assert call_count["n"] == 1
+
+
+def test_codex_now_retries_on_quota():
+    """codex used to have no retry loop at all — a quota hit failed the task
+    outright. Sharing run_with_retries gives it quota-aware retry like claude."""
+    from topos.backends.codex_cli import CodexCLIBackend
+    backend = CodexCLIBackend(name="codex", max_quota_retries=2, quota_retry_wait_s=0.01)
+    call_count = {"n": 0}
+
+    def fake_once(**kwargs):
+        call_count["n"] += 1
+        return _make_result("quota") if call_count["n"] < 2 else _make_result("completed")
+
+    with patch.object(backend, "_run_once", side_effect=fake_once), \
+         patch("topos.backends._retry.time.sleep"):
+        r = backend.run(
+            prompt="x", workspace=__import__("pathlib").Path("/tmp"),
+            allowed_tools=[], mcp_servers=[],
+        )
+    assert r.exit_reason == "completed"
+    assert call_count["n"] == 2
 
 
 def test_make_critic_honors_global_override():

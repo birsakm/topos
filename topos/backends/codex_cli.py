@@ -37,6 +37,7 @@ from pathlib import Path
 from .. import config as cfg
 from .._fs_diff import new_or_modified, snapshot_mtimes
 from ..process import run_process
+from ._retry import run_with_retries
 from ._utils import assert_prompt_within_limit, classify_exit
 from .base import AgentRunResult, AuthMode, McpServerConfig
 
@@ -52,6 +53,8 @@ class CodexCLIBackend:
     config_overrides: tuple[str, ...] = field(default_factory=tuple)
     extra_args: tuple[str, ...] = field(default_factory=tuple)
     default_timeout_s: int = 600
+    max_quota_retries: int = 3
+    quota_retry_wait_s: float = 60.0
 
     @classmethod
     def from_config(cls, conf: dict | None = None) -> "CodexCLIBackend":
@@ -69,6 +72,8 @@ class CodexCLIBackend:
             config_overrides=tuple(merged.get("config_overrides") or ()),
             extra_args=tuple(merged.get("extra_args") or ()),
             default_timeout_s=int(merged.get("timeout_s") or 600),
+            max_quota_retries=int(merged.get("max_quota_retries", 3)),
+            quota_retry_wait_s=float(merged.get("quota_retry_wait_s", 60.0)),
         )
 
     def build_cmd(self, prompt: str, workspace: Path) -> list[str]:
@@ -91,6 +96,36 @@ class CodexCLIBackend:
         return cmd
 
     def run(
+        self,
+        *,
+        prompt: str,
+        workspace: Path,
+        allowed_tools: list[str],
+        mcp_servers: list[McpServerConfig],
+        timeout_s: int | None = None,
+        env: dict[str, str] | None = None,
+        system_prompt_append: str | None = None,
+        trajectory_dir: Path | None = None,
+    ) -> AgentRunResult:
+        """One-shot invocation in ``_run_once``; the shared retry loop adds
+        quota-aware retry (codex used to fail outright on a quota hit)."""
+        return run_with_retries(
+            lambda: self._run_once(
+                prompt=prompt,
+                workspace=workspace,
+                allowed_tools=allowed_tools,
+                mcp_servers=mcp_servers,
+                timeout_s=timeout_s,
+                env=env,
+                system_prompt_append=system_prompt_append,
+                trajectory_dir=trajectory_dir,
+            ),
+            retryable={"quota": self.max_quota_retries},
+            base_wait_s={"quota": self.quota_retry_wait_s},
+            label="codex_cli",
+        )
+
+    def _run_once(
         self,
         *,
         prompt: str,
