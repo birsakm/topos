@@ -623,6 +623,38 @@ def bpy_docs_index(
     typer.echo("done.")
 
 
+@bpy_docs_app.command("search")
+def bpy_docs_search_cmd(
+    query: str = typer.Argument(...),
+    top_k: int = typer.Option(5, "--top-k"),
+    kind: str = typer.Option(None, "--kind",
+                              help="Restrict to one kind: op | bmesh_op | class | method | function"),
+):
+    """Query the Blender API index and print matches.
+
+    Agent-facing: the topos_bpy_docs skill and the fix-loop prompts tell part
+    agents to run `topos bpy-docs search "<query>"` from Bash to verify API
+    signatures before writing code. (Do not remove — it's part of the agent
+    contract, not a debug-only helper.)
+    """
+    from .bpy_docs import search
+    kinds = [kind] if kind else None
+    try:
+        matches = search(query, top_k=top_k, kinds=kinds)
+    except FileNotFoundError as e:
+        typer.echo(str(e))
+        raise typer.Exit(code=1)
+    if not matches:
+        typer.echo(f"(no matches for {query!r})")
+        return
+    for m in matches:
+        typer.echo(f"\n[{m['kind']:9s} score={m['score']:5.1f}]  {m['symbol']}")
+        if m.get("signature"):
+            typer.echo(f"  sig: {m['signature']}")
+        if m.get("short_doc"):
+            typer.echo(f"  doc: {m['short_doc'][:200]}")
+
+
 # ---------- trajectory analysis ----------
 
 @app.command()
