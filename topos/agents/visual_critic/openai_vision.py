@@ -81,10 +81,13 @@ class OpenAIVisionCritic:
                 "`topos config set visual_critic.openai_vision.api_key <key>`."
             )
 
+        refs = inputs.reference_images or []
         prompt_text = build_critic_prompt(
             rubric, role_hint=(inputs.metadata or {}).get("role_hint"),
+            n_reference=len(refs),
         )
-        payload = _build_payload(prompt_text, inputs.images, self.model)
+        # reference target image(s) first, then the rendered output to grade.
+        payload = _build_payload(prompt_text, [*refs, *inputs.images], self.model)
         response_body = post_json_with_retries(
             url=self.base_url,
             body=json.dumps(payload).encode("utf-8"),

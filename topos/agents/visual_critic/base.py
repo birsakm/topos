@@ -55,7 +55,8 @@ class Rubric:
 
 @dataclass
 class CriticInputs:
-    images: list[Path]
+    images: list[Path]                                       # the rendered output to grade
+    reference_images: list[Path] = field(default_factory=list)  # optional user-provided target(s) to compare against
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

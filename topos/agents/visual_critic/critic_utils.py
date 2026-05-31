@@ -74,6 +74,8 @@ def build_critic_prompt(
     *,
     image_names: list[str] | None = None,
     role_hint: str | None = None,
+    reference_image_names: list[str] | None = None,
+    n_reference: int = 0,
 ) -> str:
     """Render the shared vision-judge Jinja2 prompt.
 
@@ -82,9 +84,13 @@ def build_critic_prompt(
     images from disk (cli_critic); leave empty/None for API backends where
     images embed in the message body as base64.
 
-    ``role_hint`` is forwarded as extra context to the model — typically a
-    workspace-aware note for CLI critics, or a per-task hint passed through
-    ``CriticInputs.metadata["role_hint"]``.
+    ``role_hint`` is forwarded as extra context to the model.
+
+    Reference comparison: when the user provided a reference target, pass
+    ``reference_image_names`` (CLI critics Read them) and/or ``n_reference``
+    (API critics embed the reference images FIRST, so the count tells the model
+    which leading images are the target). The template then asks the model to
+    grade STRUCTURAL fidelity against the reference, not photographic match.
     """
     from ...prompts import render as render_prompt
     return render_prompt(
@@ -95,6 +101,8 @@ def build_critic_prompt(
         criteria=rubric.criteria,
         output_schema_json=json.dumps(OUTPUT_SCHEMA, indent=2),
         role_hint=role_hint,
+        reference_image_names=reference_image_names or [],
+        n_reference=n_reference,
     )
 
 

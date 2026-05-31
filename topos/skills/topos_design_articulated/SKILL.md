@@ -27,6 +27,19 @@ A machine-readable contract describing the parts, their world placement, and the
 - **-Y is "the front"** by Topos convention. Drawers slide along `[0, -1, 0]` to come forward; doors hinge so opening pulls them toward -Y.
 - **Centered**, not corner-anchored: `world_xyz` is the bbox CENTER, `world_extents` is the FULL size along each axis (not half-extents).
 
+### Axis convention for rotating / rolling parts (wheels, discs, rollers, pulleys) — get this right
+
+A part that **rolls along the travel direction** spins about the **left-right axis = X = `[1, 0, 0]`** (its axle is X), because travel is along ±Y and up is Z.
+
+- Its `continuous` (or `revolute`) joint **`axis` MUST be `[1, 0, 0]`** — NOT `[0, 1, 0]` (that's the travel direction; a wheel spinning about its own travel axis just wobbles, it can't roll).
+- Its disc lies in the **Y-Z plane**, so `world_extents` is **thin along X**: e.g. a 0.68 m wheel that's 0.04 m thick → `[0.04, 0.68, 0.68]`, NOT `[0.68, 0.04, 0.68]`.
+- Worked example — bicycle wheels (front at -Y, rear at +Y, both rolling forward):
+  ```
+  FrontWheel: world_extents [0.04, 0.68, 0.68]   joint axis [1, 0, 0]
+  RearWheel:  world_extents [0.04, 0.68, 0.68]   joint axis [1, 0, 0]
+  ```
+- A rotor/turbine/propeller that faces forward (spins about the travel axis) is the opposite: axle = Y, disc in the X-Z plane. Pick the axle = the axis the part actually spins around, and make `world_extents` thin along that same axle.
+
 ## Schema
 
 ```jsonc

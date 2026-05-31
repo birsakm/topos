@@ -7,7 +7,18 @@ Context for this evaluation:
 {{ role_hint }}
 {% endif %}
 
+{% if n_reference > 0 %}
+A REFERENCE TARGET was provided: image(s) of what the user wants this object to look like.
+{% if reference_image_names %}Read the reference target image(s) FIRST:
+{% for name in reference_image_names -%}
+  - {{ name }}   (REFERENCE TARGET — what the user wants)
+{% endfor %}
+Then read the rendered output to grade:
+{% else %}The FIRST {{ n_reference }} attached image(s) are the REFERENCE TARGET (what the user wants); the remaining attached images are the RENDERED OUTPUT to grade.
+{% endif %}
+{% else %}
 Read each of these rendered images from the current directory using the Read tool:
+{% endif %}
 {% for name in image_names -%}
   - {{ name }}
 {% endfor %}
@@ -18,6 +29,9 @@ Evaluate the rendered content against these criteria:
     weight: {{ c.weight }}
     prompt: {{ c.prompt }}
 {% endfor %}
+{% if n_reference > 0 %}
+COMPARE the rendered output against the reference target. Judge STRUCTURAL / SEMANTIC fidelity: are the right parts present, in the right arrangement, ORIENTATION, and proportions as the reference? Do NOT require photographic or material match — the output is a procedural 3D approximation, not a photo. Put concrete structural mismatches (missing/extra parts, wrong orientation — e.g. a wheel facing the wrong way — bad proportions or layout) into suggested_fixes, and let them pull down the relevant criteria scores.
+{% endif %}
 
 Rules:
 - per_criterion[<id>].score is 0..1.

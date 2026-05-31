@@ -107,11 +107,15 @@ class GeminiVisionCritic:
                 "https://aistudio.google.com/app/apikey."
             )
 
+        refs = inputs.reference_images or []
         prompt_text = build_critic_prompt(
             rubric, role_hint=(inputs.metadata or {}).get("role_hint"),
+            n_reference=len(refs),
         )
+        # reference target image(s) FIRST, then the rendered output to grade —
+        # the prompt says the leading n_reference attached images are the target.
         payload = _build_payload(
-            prompt_text, inputs.images,
+            prompt_text, [*refs, *inputs.images],
             use_google_search=self.use_google_search,
         )
         start = time.monotonic()

@@ -159,6 +159,10 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
                 # the prompt is the ground truth for "what should this be" —
                 # the judge turns it into a role_hint so scoring is grounded
                 "metadata": {"prompt": prompt},
+                # if the user gave reference image(s), compare the assembled
+                # render against them (catches structure/orientation/proportion
+                # mismatches a text rubric alone misses).
+                "compare_to_reference": True,
             },
             "deps": ["05_tool_render_multiview"],
         },

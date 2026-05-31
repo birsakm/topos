@@ -76,7 +76,9 @@ Notice: it equals `Handle.world_xyz - Drawer.world_xyz`. This shortcut works for
 `axis` is a 3-vector (will be normalized by URDF parser). Common choices:
 - `[0, -1, 0]` = motion along -Y (e.g. drawer pulling out the front of a cabinet facing -Y)
 - `[0, 0, 1]` = motion along +Z (e.g. lid lifting upward, or rotational about world Z)
-- `[1, 0, 0]` = motion along +X
+- `[1, 0, 0]` = motion along +X (this is also the axle for a **wheel/roller that rolls forward** — see below)
+
+A `continuous` wheel/disc/roller that rolls along the travel direction spins about the **left-right axis `[1, 0, 0]`** (NOT `[0, 1, 0]`, the travel direction). If the design's wheel axis looks like `[0, 1, 0]`, it's almost certainly a design bug (the wheel would wobble, not roll) — see `topos_design_articulated` › Axis convention.
 
 Pull the design's `axis` and `limit_from_rest` straight through to the YAML — the framework's rest pose contract is set up so they translate 1:1.
 

@@ -79,7 +79,12 @@ class CliVisionCritic:
         img_dir = workspace / img_subdir
         img_dir.mkdir(parents=True, exist_ok=True)
         staged_names: list[str] = []
+        ref_names: list[str] = []
         try:
+            for i, img in enumerate(inputs.reference_images or []):
+                dst = img_dir / f"reference_{i:02d}{img.suffix.lower() or '.png'}"
+                shutil.copy(img, dst)
+                ref_names.append(f"{img_subdir}/{dst.name}")
             for i, img in enumerate(inputs.images):
                 dst = img_dir / f"render_{i:02d}{img.suffix.lower() or '.png'}"
                 shutil.copy(img, dst)
@@ -88,6 +93,7 @@ class CliVisionCritic:
             prompt = _build_prompt(
                 staged_names, rubric, metadata=meta,
                 workspace_aware=bool(ws_path),
+                reference_names=ref_names,
             )
             result = self.backend.run(
                 prompt=prompt,
@@ -131,7 +137,7 @@ def make_gemini_cli_critic(config: dict | None = None) -> CliVisionCritic:
 
 def _build_prompt(
     image_relpaths: list[str], rubric: Rubric, metadata: dict | None = None,
-    *, workspace_aware: bool,
+    *, workspace_aware: bool, reference_names: list[str] | None = None,
 ) -> str:
     """Render the CLI-critic prompt. Unlike the API-based critics, we ask the
     model to use its Read tool to inspect images AND optionally the source.
@@ -151,6 +157,8 @@ def _build_prompt(
         rubric,
         image_names=image_relpaths,
         role_hint=extra_context or None,
+        reference_image_names=reference_names or [],
+        n_reference=len(reference_names or []),
     )
 
 

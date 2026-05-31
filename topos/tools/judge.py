@@ -7,6 +7,7 @@ are the renamed ``Critic`` / ``CriticInputs`` from ``topos.agents.visual_critic`
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ INPUT_SCHEMA: dict = {
         "image_pattern": {"type": "string", "description": "Glob pattern relative to workspace (e.g. 'artifacts/*.png')"},
         "images": {"type": "array", "items": {"type": "string"}, "description": "Explicit list, takes precedence over image_pattern"},
         "metadata": {"type": "object"},
+        "compare_to_reference": {"type": "boolean", "description": "If true and the workspace has reference image(s) under prompts/references/all_*, pass them to the critic as a comparison target (assembly-level judge only)."},
     },
     "required": ["workspace", "rubric"],
 }
@@ -40,11 +42,34 @@ OUTPUT_SCHEMA: dict = {
 }
 
 
+def _gather_reference_images(ws: Path) -> list[Path]:
+    """Collect user-provided reference target images for an assembly judge:
+    the shared ``prompts/references/all_*.{png,jpg,jpeg,webp}`` (what `topos make
+    -i` drops in) plus any top-level ``design.json`` ``reference_images``."""
+    refs: list[Path] = []
+    refs_dir = ws / "prompts" / "references"
+    if refs_dir.is_dir():
+        for ext in ("png", "jpg", "jpeg", "webp"):
+            refs.extend(sorted(refs_dir.glob(f"all_*.{ext}")))
+    design_path = ws / "src" / "design.json"
+    if design_path.is_file():
+        try:
+            design = json.loads(design_path.read_text(encoding="utf-8"))
+            for rel in design.get("reference_images") or []:
+                p = (ws / rel)
+                if p.is_file() and p not in refs:
+                    refs.append(p)
+        except (ValueError, OSError):
+            pass
+    return refs
+
+
 @tool(
     "judge",
     description=(
         "Evaluate rendered images against a Topos rubric and return scores plus "
-        "concrete suggested fixes."
+        "concrete suggested fixes. With compare_to_reference, also compares the "
+        "render against the user's reference image(s)."
     ),
     input_schema=INPUT_SCHEMA,
     output_schema=OUTPUT_SCHEMA,
@@ -57,6 +82,7 @@ def judge(
     image_pattern: str | None = None,
     images: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
+    compare_to_reference: bool = False,
 ) -> dict[str, Any]:
     ws = Path(workspace).resolve()
     if not ws.is_dir():
@@ -111,8 +137,11 @@ def judge(
             )
     md.pop("prompt", None)  # control field consumed here, not a critic input
 
+    reference_images = _gather_reference_images(ws) if compare_to_reference else []
+
     result = critic.evaluate(
-        CriticInputs(images=img_paths, metadata=md), rubric_obj
+        CriticInputs(images=img_paths, reference_images=reference_images, metadata=md),
+        rubric_obj,
     )
     return {
         **result.to_dict(),
