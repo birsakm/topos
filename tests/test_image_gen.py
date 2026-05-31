@@ -210,8 +210,7 @@ def test_gemini_generate_handles_http_error():
 #
 # Tool was refactored 2026-05-14: input is now (workspace, part_name) — the
 # tool reads design.json[parts.<part_name>.texture] itself. The old
-# (prompt, output_relpath) signature is gone; CLI keeps its own path
-# (cli.py:generate_texture_cmd) that talks to ImageGenBackend directly.
+# (prompt, output_relpath) signature is gone.
 
 
 def _write_design(ws: Path, parts: list[dict]) -> Path:
