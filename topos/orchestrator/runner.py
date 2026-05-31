@@ -478,6 +478,20 @@ class Runner:
                 # and crashed. Confirmed root cause via trajectory timestamps.)
                 if task.id in results:
                     del results[task.id]
+                # A re-running subgraph CHILD must also invalidate its parent
+                # subgraph's stale completion. Consumers (build → render →
+                # judge) gate on the subgraph id, not the child id, so without
+                # this the iter-0 subgraph success entry stays in ``results``
+                # and they dispatch on pre-fix geometry while the child is
+                # still regenerating — the fix lands too late to reach the
+                # final GLB/renders, and the judge grades stale images.
+                # ``_maybe_complete_subgraphs`` re-sets the subgraph to success
+                # once ALL children (including this re-run) finish again.
+                # (Observed on turquoise_road_bicycle 2026-05-30: iter-2 build/
+                # render/export finished before the slow stem/saddle fixes.)
+                for _sg_id, (_child_ids, _sg) in getattr(self, "_subgraph_children", {}).items():
+                    if task.id in _child_ids and _sg_id in results:
+                        del results[_sg_id]
                 continue
             prior = results.get(task.id)
             if prior is not None and prior.success:

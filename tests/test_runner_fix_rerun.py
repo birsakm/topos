@@ -197,3 +197,56 @@ def test_fix_rerun_preserves_unrelated_results():
     # Sibling parts that didn't fail their judge — still carryable
     assert "03_agent_part_pelvis" in results
     assert "01_agent_design" in results
+
+
+def test_subgraph_child_fix_rerun_blocks_downstream_until_refixed(tmp_path):
+    """A re-running subgraph CHILD must invalidate its parent subgraph so
+    consumers (build → render → judge gate on the subgraph id, not the child
+    id) wait for the fix instead of running on stale iter-0 geometry — the
+    turquoise_road_bicycle 2026-05-30 bug where iter-2 build/render/export
+    finished before the slow stem/saddle fixes, so the fixes never reached
+    the final GLB/renders and the judge graded stale images."""
+    import time
+    from unittest.mock import patch
+    from topos.orchestrator.runner import Runner
+    from topos.orchestrator.results import TaskResult
+    from topos.orchestrator.tasks import AgentTask, SubgraphTask
+    from topos.orchestrator.plan_schema import Plan
+    from topos.workspace import Workspace
+
+    (tmp_path / "manifest.json").write_text(
+        '{"slug":"x","domain":"rigid","frozen":false,"schema_version":1}'
+    )
+    ws = Workspace(root=tmp_path, slug="x")
+    runner = Runner(workspace=ws, plan=Plan(project="x", tasks=[]), backends={})
+
+    sg_id = "02_subgraph_parts"
+    child_id = "02_subgraph_parts__05_agent_part_stem"
+    sg = SubgraphTask(id=sg_id, expand_from="src/design.json", expansion_kind="articulated_parts")
+    runner._subgraph_children = {sg_id: ({child_id}, sg)}
+
+    # iter-0 stale success for the child AND its parent subgraph.
+    results = {
+        child_id: TaskResult(id=child_id, kind="agent", success=True, duration_s=1.0, iteration=0, output={}),
+        sg_id: TaskResult(id=sg_id, kind="subgraph", success=True, duration_s=1.0, iteration=0, output={}),
+    }
+
+    order: list[str] = []
+
+    def fake_agent(task, *, iteration):
+        order.append(task.id)
+        if "part_stem" in task.id:
+            time.sleep(0.1)  # slow fix; build would race ahead without the gate
+        return TaskResult(id=task.id, kind="agent", success=True, duration_s=0.1,
+                          iteration=iteration, output={})
+
+    fix_child = AgentTask(id=child_id, goal="re-fix stem", is_fix_rerun=True, deps=[])
+    build = AgentTask(id="03_agent_build", goal="assemble", deps=[sg_id])
+
+    with patch.object(runner, "_run_agent", side_effect=fake_agent):
+        runner._execute_tasks([fix_child, build], results, iteration=1)
+
+    assert order.index(child_id) < order.index("03_agent_build"), (
+        f"build ran before the stem fix finished (stale subgraph gate): {order}"
+    )
+    assert results[sg_id].iteration == 1, "subgraph should have re-completed this iter"
