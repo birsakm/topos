@@ -457,7 +457,7 @@ def test_plan_generator_design_agent_has_texture_skill():
     design agent's skill set + that the parts subgraph is wired."""
     from topos.orchestrator.plan_generator import generate_plan_articulated
 
-    plan = generate_plan_articulated("t")
+    plan = generate_plan_articulated("t", "a test articulated object")
     by_id = {t["id"]: t for t in plan["tasks"]}
 
     design = by_id["01_agent_design"]
@@ -470,7 +470,7 @@ def test_plan_generator_emits_subgraph_for_parts():
     the runner expands from design.json at runtime."""
     from topos.orchestrator.plan_generator import generate_plan_articulated
 
-    plan = generate_plan_articulated("t")
+    plan = generate_plan_articulated("t", "a test articulated object")
     by_id = {t["id"]: t for t in plan["tasks"]}
 
     # No per-part tasks at plan time
@@ -498,7 +498,7 @@ def test_plan_generator_validates_through_plan_schema():
     from topos.orchestrator.plan_generator import generate_plan_articulated
     from topos.orchestrator.plan_schema import Plan, topo_sort
 
-    plan_dict = generate_plan_articulated("t")
+    plan_dict = generate_plan_articulated("t", "a test articulated object")
     plan = Plan.model_validate(plan_dict)
     ordered = topo_sort(plan.materialised())
 

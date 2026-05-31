@@ -84,6 +84,35 @@ def test_intent_md_is_injected_as_role_hint_when_unset(tmp_path: Path):
     assert "Be critical" in role_hint
 
 
+def test_metadata_prompt_is_injected_as_role_hint(tmp_path: Path):
+    """`topos make` inlines the prompt (no intent.md file); the judge must turn
+    metadata.prompt into a grounded role_hint, and must NOT leak `prompt` to the
+    critic as metadata."""
+    ws = _setup_ws(tmp_path, with_intent=False)   # no intent.md on disk
+
+    captured: dict = {}
+    mock_critic = MagicMock()
+    mock_critic.evaluate.side_effect = lambda inp, rub: (
+        captured.update(metadata=inp.metadata) or _stub_result()
+    )
+
+    with patch("topos.tools.judge.load_rubric", return_value=_stub_rubric()), \
+         patch("topos.tools.judge.make_critic", return_value=mock_critic):
+        judge(
+            workspace=str(ws),
+            rubric="anything",
+            image_pattern="artifacts/object_render/view_*.png",
+            metadata={"prompt": "a turquoise road bicycle"},
+        )
+
+    role_hint = captured["metadata"].get("role_hint")
+    assert role_hint is not None
+    assert "a turquoise road bicycle" in role_hint
+    assert "Be critical" in role_hint
+    # `prompt` is a control field consumed by the judge, not a critic input
+    assert "prompt" not in captured["metadata"]
+
+
 def test_caller_role_hint_is_not_overridden(tmp_path: Path):
     """Per-part judges set their own role_hint upstream; the intent.md
     autowiring must not clobber an explicit caller-provided value."""

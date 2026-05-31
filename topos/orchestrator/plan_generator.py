@@ -28,8 +28,11 @@ _SKILL_BY_TASK = {
 }
 
 
-def generate_plan_articulated(project: str) -> dict:
-    """Build a plan.json dict for an articulated-domain project named ``project``.
+def generate_plan_articulated(project: str, prompt: str) -> dict:
+    """Build a plan.json dict for an articulated project named ``project``.
+
+    ``prompt`` is the user's request, inlined directly into the design agent's
+    goal (no separate file).
 
     Post-ADR-0008: the plan emits a single ``SubgraphTask`` (kind=``subgraph``)
     in place of the per-part fan-out. At runtime, after ``01_agent_design``
@@ -43,7 +46,7 @@ def generate_plan_articulated(project: str) -> dict:
     """
     tasks: list[dict] = []
 
-    # 01_agent_design — reads ./prompts/intent.md, writes src/design.json
+    # 01_agent_design — reads the inlined prompt, writes src/design.json.
     # WebSearch + WebFetch let the designer consult reference imagery /
     # canonical descriptions for the asset class (e.g., G1 Optimus Prime
     # color codes, Victorian wardrobe proportions) before fixing the parts
@@ -54,7 +57,7 @@ def generate_plan_articulated(project: str) -> dict:
         "kind": "agent",
         "backend": "claude",
         "goal_template": "topos:articulated/designer.md.j2",
-        "goal_params": {"intent_file": "./prompts/intent.md"},
+        "goal_params": {"prompt": prompt},
         "skills": _SKILL_BY_TASK["design"],
         "allowed_tools": [
             "Read", "Edit", "Write", "Glob",
@@ -150,6 +153,9 @@ def generate_plan_articulated(project: str) -> dict:
             "args": {
                 "rubric": "articulated_object_v1",
                 "image_pattern": "artifacts/object_render/view_*.png",
+                # the prompt is the ground truth for "what should this be" —
+                # the judge turns it into a role_hint so scoring is grounded
+                "metadata": {"prompt": prompt},
             },
             "deps": ["05_tool_render_multiview"],
         },

@@ -86,25 +86,30 @@ def judge(
     md = dict(metadata or {})
     md.setdefault("workspace_path", str(ws))
 
-    # Auto-inject prompts/intent.md (frozen by the spec agent at `topos make`
-    # time) as role_hint when the caller hasn't set one. Without this the
-    # critic sees rendered images plus a generic rubric and has no way to
-    # tell whether the produced thing matches the request — leading to
-    # absurdities like grading a turbofan engine as a "grinder or shaker"
-    # because the silhouette is plausible and the rubric is identity-agnostic.
+    # Inject the user's request as role_hint when the caller hasn't set one.
+    # Without this the critic sees rendered images plus a generic rubric and
+    # has no way to tell whether the produced thing matches the request —
+    # leading to absurdities like grading a turbofan engine as a "grinder or
+    # shaker" because the silhouette is plausible and the rubric is identity-
+    # agnostic. `make` passes the prompt inline via metadata.prompt; a hand-
+    # built workspace may instead carry a prompts/intent.md — accept either.
     # Per-part judges already set a part-specific role_hint upstream, so this
     # only kicks in for assembly-level judges that lack one.
     if "role_hint" not in md:
-        intent_path = ws / "prompts" / "intent.md"
-        if intent_path.is_file():
+        request = md.get("prompt")
+        if not request:
+            intent_path = ws / "prompts" / "intent.md"
+            if intent_path.is_file():
+                request = intent_path.read_text(encoding="utf-8").strip()
+        if request:
             md["role_hint"] = (
-                "The output renders should match this user-stated intent "
-                "(frozen at spec time):\n\n"
-                f"{intent_path.read_text(encoding='utf-8').strip()}\n\n"
+                "The output renders should match this user request:\n\n"
+                f"{request}\n\n"
                 "Grade the renders by how well the produced object matches "
-                "this intent. Be critical — do NOT assume the produced object "
+                "this request. Be critical — do NOT assume the produced object "
                 "already matches because the prompt describes the target."
             )
+    md.pop("prompt", None)  # control field consumed here, not a critic input
 
     result = critic.evaluate(
         CriticInputs(images=img_paths, metadata=md), rubric_obj

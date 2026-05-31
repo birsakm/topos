@@ -211,7 +211,10 @@ def _copy_reference_images(images: "list[Path] | None", prompts_dir: Path) -> in
         if img.suffix.lower() not in ok_ext:
             typer.echo(f"WARN: unsupported image type {img.suffix!r} (use png/jpg/webp): {img}", err=True)
             continue
-        shutil.copy(img, refs / f"all_{img.name}")
+        # all_ prefix makes the auto-discovery share it across every part; don't
+        # double it up if the source file already carries the prefix.
+        dest_name = img.name if img.name.startswith("all_") else f"all_{img.name}"
+        shutil.copy(img, refs / dest_name)
         n += 1
     return n
 
@@ -230,8 +233,8 @@ def make(
 ):
     """Build 3D content from a single prompt (+ optional reference images).
 
-    The one entry point. Writes the prompt to prompts/intent.md, copies any
-    reference images into prompts/references/, lays down the fixed articulated
+    The one entry point. Inlines the prompt into the design agent's goal, copies
+    any reference images into prompts/references/, lays down the fixed articulated
     plan, and runs the orchestrator. The design agent derives the parts from the
     prompt (and any reference images) at runtime — there is no separate spec
     step. A static object is just an articulated one the design agent gives no
@@ -243,18 +246,17 @@ def make(
     slug = slug or _derive_slug(prompt)
     ws = Workspace.create(slug, "articulated", base=base, exist_ok=False)
     try:
-        prompts_dir = ws.root / "prompts"
-        prompts_dir.mkdir(parents=True, exist_ok=True)
-        (prompts_dir / "intent.md").write_text(prompt.strip() + "\n", encoding="utf-8")
-        n_imgs = _copy_reference_images(image, prompts_dir)
-        ws.plan_path.write_text(json.dumps(generate_plan_articulated(slug), indent=2), encoding="utf-8")
+        # The prompt is inlined into the design agent's goal — no intent.md file.
+        n_imgs = _copy_reference_images(image, ws.root / "prompts")
+        plan = generate_plan_articulated(slug, prompt.strip())
+        ws.plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
     except Exception:
         shutil.rmtree(ws.root, ignore_errors=True)  # don't leave a half-written workspace
         raise
 
     typer.echo(f"=== workspace ready: {ws.root} ===")
     typer.echo(f"  → slug={slug}  domain=articulated")
-    typer.echo("  → wrote prompts/intent.md + plan.json"
+    typer.echo("  → wrote plan.json"
                + (f" + {n_imgs} reference image(s)" if n_imgs else ""))
 
     if no_run:

@@ -29,17 +29,19 @@ def test_make_writes_intent_and_fixed_plan(tmp_path):
     assert res.exit_code == 0, res.output
 
     ws = tmp_path / "small_wooden_stool"
-    # prompt goes verbatim to intent.md (the design agent's input) — no spec step
-    assert (ws / "prompts" / "intent.md").read_text().strip() == "a small wooden stool"
-
     plan = json.loads((ws / "plan.json").read_text())
     assert plan["project"] == "small_wooden_stool"
     ids = [t["id"] for t in plan["tasks"]]
     assert ids[0] == "01_agent_design"
-    assert any(t["kind"] == "subgraph" for t in plan["tasks"]), "parts must expand at runtime"
 
-    # No spec-agent leftovers
+    # the prompt is inlined into the design agent's goal — no intent.md file,
+    # no spec step
+    design = next(t for t in plan["tasks"] if t["id"] == "01_agent_design")
+    assert design["goal_params"]["prompt"] == "a small wooden stool"
+    assert not (ws / "prompts" / "intent.md").exists()
     assert not (ws / "spec.yaml").exists()
+
+    assert any(t["kind"] == "subgraph" for t in plan["tasks"]), "parts must expand at runtime"
 
     # The emitted plan must be accepted by the loader (else auto-run would fail)
     from topos.orchestrator.plan_schema import load_plan
@@ -60,6 +62,20 @@ def test_make_copies_reference_images_for_all_parts(tmp_path):
     copied = tmp_path / "cab_ref" / "prompts" / "references" / "all_ref.png"
     assert copied.is_file()
     assert copied.read_bytes() == b"\x89PNG fake-bytes"
+
+
+def test_make_does_not_double_all_prefix(tmp_path):
+    img = tmp_path / "all_reference.webp"   # source already carries the prefix
+    img.write_bytes(b"RIFF....WEBP")
+    res = runner.invoke(
+        app,
+        ["make", "a bike", "-i", str(img),
+         "--no-run", "--slug", "bike1", "--base", str(tmp_path)],
+    )
+    assert res.exit_code == 0, res.output
+    refs = tmp_path / "bike1" / "prompts" / "references"
+    assert (refs / "all_reference.webp").is_file()
+    assert not (refs / "all_all_reference.webp").exists()
 
 
 def test_make_warns_on_missing_image_but_succeeds(tmp_path):

@@ -1,8 +1,10 @@
 Design an articulated object by writing `src/design.json` — a frozen, machine-readable contract that every downstream task will read. **Output ONLY the JSON file via the Write tool. No commentary, no markdown fences.**
 
-## Project intent
+## What to build
 
-{{ intent }}
+{{ prompt }}
+
+If reference image(s) are provided in the workspace (`prompts/references/`), Read them and let them guide the parts, proportions, colors, and style.
 
 ## Required schema (no comments, no trailing commas)
 
@@ -30,7 +32,7 @@ Design an articulated object by writing `src/design.json` — a frozen, machine-
       "outer_bevel_radius": <meters>,
       "front_inset_depth": <meters>,
       "front_inset_margin": <meters>,
-      // Optional template-and-instances. When the intent's "TEMPLATE PARTS"
+      // Optional template-and-instances. When the prompt's "TEMPLATE PARTS"
       // section lists this part, you MUST include an `instances` array here.
       // build.py constructs the canonical mesh once via build_<lower>() then
       // copies + applies each entry's transform, producing N scene objects
@@ -69,9 +71,9 @@ Design an articulated object by writing `src/design.json` — a frozen, machine-
 }
 ```
 
-## TEMPLATE PARTS — what to look for in intent
+## TEMPLATE PARTS — what to look for in prompt
 
-If the intent above contains a `## TEMPLATE PARTS` section like:
+If the prompt above contains a `## TEMPLATE PARTS` section like:
 
 ```
 ## TEMPLATE PARTS
@@ -79,19 +81,19 @@ If the intent above contains a `## TEMPLATE PARTS` section like:
 - FanBlade: 6 instances; rotation_euler=[(0,0,0),(0,1.047,0),(0,2.094,0),(0,3.142,0),(0,4.189,0),(0,5.236,0)]
 ```
 
-… each listed part in `design.json` MUST include the `instances` array (schema above). Translate each tuple from intent into a dict in the array:
+… each listed part in `design.json` MUST include the `instances` array (schema above). Translate each tuple from prompt into a dict in the array:
 
 - `translation=[(+0.15,+0.15,0),(+0.15,-0.15,0),...]` becomes `"instances": [{"translation":[0.15,0.15,0]}, {"translation":[0.15,-0.15,0]}, ...]`
 - `rotation_euler=[(0,0,0),(0,1.047,0),...]` becomes `"instances": [{"rotation_euler":[0,0,0]}, {"rotation_euler":[0,1.047,0]}, ...]`
 
 For template parts, set `world_xyz` / `world_extents` to describe **ONE canonical instance** (e.g. one leg's bbox, not the four legs combined). The canonical anchor is typically the origin or one of the instance positions — pick whichever makes the canonical build_<lower>() simplest.
 
-If the intent has NO `## TEMPLATE PARTS` section, do NOT add `instances` anywhere — every part is single-instance.
+If the prompt has NO `## TEMPLATE PARTS` section, do NOT add `instances` anywhere — every part is single-instance.
 
 ## Sanity checks before writing
 
 - Connected parts fit with the stated clearance — e.g. a drawer's bbox plus the joint's allowed range must fit within its parent cavity's extents minus the design's clearance
-- Rest pose is what gets RENDERED — choose it so the articulation is visible (e.g. drawer half-open, door slightly ajar) unless the intent says otherwise
+- Rest pose is what gets RENDERED — choose it so the articulation is visible (e.g. drawer half-open, door slightly ajar) unless the prompt says otherwise
 - All `world_extents` are positive
 - `axis` is a unit vector (or close enough)
 - Joint origins implied by the parts' `world_xyz` (the framework will compute them from the design)
