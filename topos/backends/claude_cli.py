@@ -19,7 +19,7 @@ from pathlib import Path
 from .. import config as cfg
 from .._fs_diff import new_or_modified, snapshot_mtimes
 from ..process import run_process_with_watchdog
-from ._dialect import CLAUDE_STREAM
+from .dialect import CLAUDE_STREAM
 from ._rate_limit import TokenBucket, make_bucket_from_config
 from ._utils import assert_prompt_within_limit, classify_exit
 from .base import AgentRunResult, AuthMode, McpServerConfig

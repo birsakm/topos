@@ -4,7 +4,7 @@ the partial-message `stream_event` activity signal claude has)."""
 
 from __future__ import annotations
 
-from topos.backends._dialect import CLAUDE_STREAM, GEMINI_STREAM, StreamDialect
+from topos.backends.dialect import CLAUDE_STREAM, GEMINI_STREAM, StreamDialect
 
 
 def test_watchdog_kwargs_shape():
