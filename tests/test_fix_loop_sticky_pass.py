@@ -262,12 +262,28 @@ def test_iter_improved_false_when_no_score_moves_enough():
     assert iter_improved(prev, cur, min_delta=0.05) is False
 
 
-def test_iter_improved_counts_drops_as_movement():
-    """A score that DROPPED by min_delta also counts as movement (= fix
-    activity happening, not just stagnation). We only stop on true
-    flatlines, not on noisy oscillation."""
+def test_iter_improved_false_when_only_drops_no_gain():
+    """A score that only DROPPED is NOT progress — the fix loop is re-running
+    without making anything better, exactly the cost-burning case to stop.
+    (Old behavior counted any |Δ| as 'movement'; that meant a 9-part object
+    almost never early-stopped because something always jittered.)"""
     prev = {"08_tool_judge_part_handle": 0.75}
-    cur  = {"08_tool_judge_part_handle": 0.40}  # -0.35
+    cur  = {"08_tool_judge_part_handle": 0.40}  # -0.35, no upward gain
+    assert iter_improved(prev, cur, min_delta=0.05) is False
+
+
+def test_iter_improved_false_on_wiggle_without_real_gain():
+    """Mixed jitter (one part down, one barely up) with no part improving by
+    >= min_delta → stop. This is the multi-part saturation case."""
+    prev = {"a": 0.50, "b": 0.60, "c": 0.55}
+    cur  = {"a": 0.46, "b": 0.62, "c": 0.55}  # max gain = +0.02 (< 0.05)
+    assert iter_improved(prev, cur, min_delta=0.05) is False
+
+
+def test_iter_improved_true_when_one_part_really_gains_amid_drops():
+    """Genuine progress on at least one part counts, even if others wobble."""
+    prev = {"a": 0.40, "b": 0.70}
+    cur  = {"a": 0.58, "b": 0.66}  # a +0.18 (real gain), b -0.04 (noise)
     assert iter_improved(prev, cur, min_delta=0.05) is True
 
 

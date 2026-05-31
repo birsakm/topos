@@ -102,23 +102,29 @@ def judge_scores_snapshot(results: dict[str, TaskResult]) -> dict[str, float]:
 
 
 def iter_improved(prev: dict[str, float], cur: dict[str, float], min_delta: float) -> bool:
-    """True if at least one judge improved by >= ``min_delta`` between iters,
-    OR if a new judge appeared (sticky-pass means some judges may be absent
-    on later iters; treat their absence as ``no regression`` not ``no progress``).
+    """True if the iteration made real PROGRESS, i.e. it's worth continuing.
 
-    A judge that dropped is also counted as "movement" — that signals fix
-    activity, not stagnation. We only stop when NOTHING moved meaningfully
-    (max abs delta across shared keys < min_delta).
+    Progress is either:
+      - a judge sticky-passed (was present last iter, now absent → that part is
+        locked in as good), or
+      - some still-evaluated judge improved UPWARD by >= ``min_delta``.
+
+    Pure wiggle, judge sampling noise, or regressions do NOT count as progress —
+    counting "any movement" (the old ``abs`` rule) meant a 9-part object almost
+    never early-stopped, because with ~10 judges one always jitters, so the fix
+    loop ground to ``max_global_iters`` even when nothing was actually getting
+    better (observed: bicycle build agent looping 3 iters on the same gap).
     """
+    if set(prev) - set(cur):
+        # A previously-evaluated judge disappeared = sticky-pass froze a part
+        # that reached a passing score → genuine progress.
+        return True
     shared = set(prev) & set(cur)
     if not shared:
-        # No basis for comparison — assume improvement is possible
+        # No basis for comparison — assume improvement is still possible.
         return True
-    if set(cur) != set(prev):
-        # Judge set changed (e.g. sticky-pass froze some)
-        return True
-    max_abs_delta = max(abs(cur[k] - prev[k]) for k in shared)
-    return max_abs_delta >= min_delta
+    max_gain = max(cur[k] - prev[k] for k in shared)   # positive improvement only
+    return max_gain >= min_delta
 
 
 def frozen_parts(results: dict[str, TaskResult]) -> set[str]:
