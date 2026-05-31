@@ -158,4 +158,9 @@ analysis:
     api_key: null
 
 orchestrator:
-  max_parallel_tasks: 4
+  # Global cap on concurrently-running tasks (shared by all parallel work; the
+  # per-part agent fan-out is the main beneficiary). Higher = faster wall-time
+  # for many-part objects, but more simultaneous claude-CLI calls (rate-limit
+  # pressure) and Blender processes (CPU/RAM). Override per machine via
+  # `topos config set orchestrator.max_parallel_tasks <n>`.
+  max_parallel_tasks: 6
