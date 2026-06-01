@@ -166,6 +166,29 @@ def test_expand_hardware_skill_for_handle(tmp_path: Path):
     assert "topos_furniture_hardware" in handle_t.skills
 
 
+def test_expand_mechanical_skill_for_drivetrain(tmp_path: Path):
+    """Drivetrain / running-gear / insertion parts get topos_mechanical_details;
+    purely structural parts don't."""
+    ws = _ws(tmp_path, with_prompts={
+        "extras_frame.md": "(frame)",
+        "extras_crankset.md": "(crankset)",
+        "extras_seat_post.md": "(seat post)",
+    })
+    design = _make_design([
+        {"name": "Frame", "world_xyz": [0, 0, 0], "world_extents": [1, 1, 1]},
+        {"name": "Crankset", "world_xyz": [0, 0, -0.2], "world_extents": [0.16, 0.2, 0.2]},
+        {"name": "SeatPost", "world_xyz": [0, 0.1, 0.4], "world_extents": [0.03, 0.03, 0.2]},
+    ])
+    tasks = build_children(_subgraph(), workspace_root=ws, design_doc=design)
+    by_id = {t.id: t for t in tasks if isinstance(t, AgentTask)}
+    frame_t = by_id["02_subgraph_parts__01_agent_part_frame"]
+    crank_t = by_id["02_subgraph_parts__02_agent_part_crankset"]
+    post_t = by_id["02_subgraph_parts__03_agent_part_seat_post"]
+    assert "topos_mechanical_details" not in frame_t.skills
+    assert "topos_mechanical_details" in crank_t.skills
+    assert "topos_mechanical_details" in post_t.skills  # seat_post → insertion-style
+
+
 def test_expand_deps_wire_correctly(tmp_path: Path):
     """
     agent → its texture (chain)

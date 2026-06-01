@@ -2,7 +2,7 @@
 
 Multi-agent orchestrated, code-driven 3D object generation framework. Coding agents (claude CLI is default; codex and gemini CLI backends are also implemented) + Blender + VLM judge + planner collaborate to produce **standalone, multi-file Python projects** that build 3D content from scratch.
 
-This is the unified line: a single framework generates **both static/rigid objects and articulated objects** (a static object is an articulated object with no joints), with a **texture subsystem** (`design.json` `texture.kind = procedural | image | uv_atlas`) and **trajectory analysis** for failed/low-quality runs. It merges the former `topos3d` `master` (rigid + articulated base) and `articulated-objects` (UV-atlas texture, image texture, trajectory analysis, reference-image support) branches. The Python package and CLI are still named `topos`; the repository and distribution are named `opentopos`.
+This is the unified line: a single framework generates **both static/rigid objects and articulated objects** (a static object is an articulated object whose joints are all `fixed` — a connected single-root joint tree, never a jointless multi-root design), with a **texture subsystem** (`design.json` `texture.kind = procedural | image`; `uv_atlas` exists as an experimental rocket-example-only path, not wired into the default plan) and **trajectory analysis** for failed/low-quality runs. It merges the former `topos3d` `master` (rigid + articulated base) and `articulated-objects` (UV-atlas texture, image texture, trajectory analysis, reference-image support) branches. The Python package and CLI are still named `topos`; the repository and distribution are named `opentopos`.
 
 Detailed architecture: `docs/architecture.md`. This file is the standing context for any Claude session in this repo.
 
@@ -80,8 +80,7 @@ topos skill list                                   # list shipped topos_* skills
 topos skill install --target claude                # copy topos_* skills to ~/.claude/skills/ for native discovery
 topos skill uninstall --target claude              # remove them
 # topos freeze <slug>                              # (planned) emit standalone project; not yet implemented
-pytest tests/                                       # 38 unit + 1 integration tests (~50s including the real cabinet smoke)
-pytest tests/integration/test_rigid_chair_simple.py # e2e with real claude + blender (~$0.30, 30s)
+pytest tests/                                       # unit suite (fast, no Blender/LLM; `-m 'not integration'` is the default)
 ```
 
 ## Memory layout (where things live across sessions)

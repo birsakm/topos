@@ -9,8 +9,6 @@ provides:
   - Knob (mushroom / spherical / faceted top on a short stem)
   - Hinge / piano hinge (multi-knuckle revolute fixture)
   - Drawer slide rail (visible side runner)
-related_tools:
-  - blender_run
 related_skills:
   - topos_part_geometry
   - topos_design_articulated

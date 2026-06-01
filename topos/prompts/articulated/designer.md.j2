@@ -48,11 +48,10 @@ If reference image(s) are provided in the workspace (`prompts/references/`), Rea
       // build harness will call it after construction. See SKILL
       // `topos_texture_creator` for the patterns.
       "texture": {
-        "kind": "procedural | image | uv_atlas",      // procedural = shader nodes only; image = generate flat tileable PNG; uv_atlas = UV-unwrapped, image-gen texture painted onto the part's own UV layout (best for parts whose look must follow their shape, e.g. a labelled panel, a patterned surface)
-        "prompt": "<for image / uv_atlas kind: short image-gen prompt, e.g. 'seamless tileable rough walnut wood plank, 4k'>",
+        "kind": "procedural | image",                 // procedural = shader nodes only; image = generate flat tileable PNG
+        "prompt": "<for image kind: short image-gen prompt, e.g. 'seamless tileable rough walnut wood plank, 4k'>",
         "image_relpath": "<for image kind only: where the PNG will live, e.g. 'src/textures/drawer_front.png'>",
         "material_hint": "<short cue passed to the part-geom agent, e.g. 'rough walnut wood, low gloss'>"
-        // uv_atlas needs no image_relpath and no texture_<name>() function: the texture_uv_atlas tool unwraps the part (Smart UV Project), bakes a condition image, generates the texture, and binds it automatically during render/export.
       }
     }
     // ... more parts
@@ -92,6 +91,7 @@ If the prompt has NO `## TEMPLATE PARTS` section, do NOT add `instances` anywher
 
 ## Sanity checks before writing
 
+- The `joints` form ONE connected tree spanning every part: each pair of adjacent parts connects via a single joint, and every non-root part has exactly one parent joint (the root part is implicit). A *static* object is NOT an empty joints array — it is this same tree with every joint `type: "fixed"`. A jointless / multi-root design exports a degenerate URDF.
 - Connected parts fit with the stated clearance — e.g. a drawer's bbox plus the joint's allowed range must fit within its parent cavity's extents minus the design's clearance
 - Rest pose is what gets RENDERED — choose it so the articulation is visible (e.g. drawer half-open, door slightly ajar) unless the prompt says otherwise
 - All `world_extents` are positive

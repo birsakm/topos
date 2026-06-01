@@ -1,7 +1,12 @@
-"""Tool registry. Tools registered here are dual-purpose: callable directly
-from a ToolTask in the orchestrator, and exposed over MCP to agent backends.
+"""Tool registry. A registered tool is invoked by the orchestrator as a
+ToolTask in the DAG (see ``runner._run_tool``); it is the deterministic,
+code-owned half of the pipeline (render / export / judge / verify), distinct
+from the LLM AgentTasks.
 
-A single source of truth: the same Python function implements both paths.
+These tools are NOT exposed to the coding-agent backends: the claude CLI is
+launched with ``mcp_servers=[]`` (``runner.py``), so an agent's only tools are
+its ``allowed_tools`` (Read/Edit/Write/Glob/Bash/...). Anything an agent needs
+from this layer is reached via the CLI instead (e.g. ``topos bpy-docs search``).
 """
 
 from __future__ import annotations
@@ -24,8 +29,7 @@ class ToolSpec:
     #   byte-identical to the prior iter, so the output would be too).
     #   Set True for pure transforms (export_*, verify_parts) and
     #   deterministic renderers (workbench/eevee). Leave False for stochastic
-    #   tools (judge, generate_texture_image) or arbitrary-script tools
-    #   (blender_run).
+    #   tools (judge, generate_texture_image).
 
 
 _REGISTRY: dict[str, ToolSpec] = {}
@@ -78,9 +82,7 @@ def _ensure_default_tools_imported() -> None:
     Called lazily so a partial install doesn't blow up at import-time.
     """
     # Top-level single-tool modules (flat .py files)
-    from . import blender_run  # noqa: F401
     from . import judge  # noqa: F401
-    from . import bpy_docs_search  # noqa: F401
     from . import generate_texture_image  # noqa: F401
     from . import verify_geometry  # noqa: F401
     # Tool subpackages — each subdir's __init__.py imports its tool.py so
@@ -89,7 +91,7 @@ def _ensure_default_tools_imported() -> None:
     # threejs_render/ or unity_render/ etc. without colliding. ``export``
     # stays unprefixed because it already handles multiple targets (GLB,
     # URDF, ...) and isn't tied to one renderer.
-    from . import blender_render  # noqa: F401  (render / render_multiview / render_part / render_turntable / render_wireframe / render_cross_section)
+    from . import blender_render  # noqa: F401  (render_multiview / render_part)
     from . import export          # noqa: F401  (export_glb / export_urdf)
     from . import blender_verifier  # noqa: F401  (verify_parts)
     from . import texture_uv_atlas  # noqa: F401  (texture_uv_atlas)

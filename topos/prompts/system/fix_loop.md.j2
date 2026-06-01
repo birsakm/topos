@@ -18,10 +18,29 @@ Suggested fixes from the judge:
   (no concrete fixes; infer from feedback)
 {%- endif %}
 
-Your job:
-1. Read the files currently in src/ (use Read and Glob).
-2. Make MINIMAL targeted edits to src/build.py and/or other relevant files to address the feedback.
-3. Do NOT rewrite the whole script; preserve the parts that are working.
-4. Do NOT add cameras, lights, render config, or set scene.world.<X> — the framework handles all rendering.
-5. Do NOT call bpy.ops.render.render or modify scene.render.* — the framework renders separately after your edits.
-6. When you're done editing, stop. The framework will re-render and re-judge automatically.
+Your job — work the judge's list; do NOT re-audit the whole project:
+
+1. **The feedback above is your work-list.** It already names the specific parts that
+   are wrong (e.g. "the front fork…", "the chainring…", "the saddle…"). Trust it — the
+   judge has already done the diagnosis. You do NOT need to re-derive what's broken.
+
+2. **Read narrowly.** Read `src/design.json` and `src/build.py` once, then open ONLY the
+   `src/parts/<name>.py` files that the feedback actually names. Do NOT read the parts the
+   judge didn't mention — they're passing; re-reading them wastes time and risks
+   regressing working geometry. (Glob `src/parts/` once if you need the exact filenames.)
+
+3. **Edit narrowly.** Make targeted edits to those named part files — and to `src/build.py`
+   if the issue is placement/assembly/missing import. Preserve everything that already
+   works; do NOT rewrite the whole script or parts that weren't flagged.
+
+4. You MAY also fix one obvious, directly-related defect you happen to notice while
+   editing a flagged part — your judgment still matters. But lead with the judge's list;
+   don't go re-inspecting every part top-to-bottom "just in case."
+
+5. **Go straight to the edits.** A one-line plan is fine; a long written analysis of the
+   whole project is not — the diagnosis is already given above, so spend the turn fixing,
+   not re-thinking it.
+
+6. Do NOT add cameras, lights, render config, or set scene.world.<X> — the framework handles all rendering.
+7. Do NOT call bpy.ops.render.render or modify scene.render.* — the framework renders separately after your edits.
+8. When you're done editing, stop. The framework will re-render and re-judge automatically.

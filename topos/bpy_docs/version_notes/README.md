@@ -1,6 +1,6 @@
 # Blender Python API — curated version notes
 
-The `bpy_docs_search` tool indexes whichever Blender binary you point it at,
+The `topos bpy-docs` index covers whichever Blender binary you point it at,
 so the **signatures** in the index are always correct for the runtime
 Blender. These notes cover what the index can't tell you on its own:
 

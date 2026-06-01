@@ -28,7 +28,7 @@ Notes on the surface:
 - Output format is fixed to ``stream-json``. Each agent task captures
   per-turn JSONL events into ``transcript.jsonl`` and the trailing
   ``type: result`` event into ``transcript.json`` (downstream readers —
-  cli_critic, spec — read the latter). The legacy ``-o json`` / ``-o text``
+  e.g. cli_critic — read the latter). The legacy ``-o json`` / ``-o text``
   envelope shapes were dropped because (a) gemini never returns USD cost in
   any shape — pricing is computed from the result event's stats — and
   (b) only ``stream-json`` exposes the per-event tokens needed to do that.

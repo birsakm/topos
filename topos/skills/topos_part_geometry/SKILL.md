@@ -9,12 +9,11 @@ provides:
   - bevel modifier for soft edges
   - recessed-inset technique for drawer-style faces
   - sized-primitive arithmetic (cube_add size vs scale)
-related_tools:
-  - blender_run
 related_skills:
   - topos_design_articulated
   - topos_joints_creator
   - topos_furniture_hardware     # detailed handle/knob/hinge patterns; load this in addition for hardware parts
+  - topos_mechanical_details     # crankset/pedal/sprocket/spoked-wheel/seat-post patterns; load in addition for drivetrain/running-gear/insertion parts
 ---
 
 # Topos: Part Geometry

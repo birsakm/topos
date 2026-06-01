@@ -24,7 +24,8 @@ from .plan_schema import _resolve_goal_template
 from .tasks import AgentTask, SubgraphTask, Task, ToolTask
 
 
-# --- skill sets (lifted from plan_generator._SKILL_BY_TASK) ----------------
+# --- skill sets for per-part agents (design/build/joints live in
+#     plan_generator._SKILL_BY_TASK; the part-agent set is defined here) ------
 
 _PART_SKILLS = [
     "topos_part_geometry",
@@ -33,6 +34,15 @@ _PART_SKILLS = [
     "topos_blender_pitfalls",
 ]
 _HARDWARE_KEYWORDS = {"handle", "pull", "knob", "grip", "hinge", "latch", "catch", "lock"}
+# Drivetrain / running-gear / insertion mechanisms — parts that read as machine
+# only when built as a fixed multi-primitive assembly (crankset = axle + arms +
+# chainring + pedals, etc.). Matched as substrings, so "crank" catches
+# "crankset", "seat_post"/"seatpost" both hit, etc.
+_MECHANICAL_KEYWORDS = {
+    "crank", "chainset", "pedal", "chainring", "sprocket", "cog", "cassette",
+    "gear", "wheel", "hub", "spoke", "axle", "spindle", "pulley", "derailleur",
+    "seat_post", "seatpost", "steerer", "stem",
+}
 
 
 def _camel_to_snake(name: str) -> str:
@@ -45,6 +55,8 @@ def _skills_for_part(part_name: str) -> list[str]:
     lower = part_name.lower()
     if any(kw in lower for kw in _HARDWARE_KEYWORDS):
         skills.append("topos_furniture_hardware")
+    if any(kw in lower for kw in _MECHANICAL_KEYWORDS):
+        skills.append("topos_mechanical_details")
     return skills
 
 

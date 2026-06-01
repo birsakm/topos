@@ -163,4 +163,7 @@ orchestrator:
   # for many-part objects, but more simultaneous claude-CLI calls (rate-limit
   # pressure) and Blender processes (CPU/RAM). Override per machine via
   # `topos config set orchestrator.max_parallel_tasks <n>`.
-  max_parallel_tasks: 6
+  # Set to 9 so a typical multi-part object (bicycle = 9 parts) fans out in a
+  # single wave instead of queueing the 7th+ part behind a freed slot — measured
+  # ~4-5 min off iter0 wall-time, no rate-limit pressure observed on Max 20x.
+  max_parallel_tasks: 9

@@ -237,8 +237,9 @@ def make(
     any reference images into prompts/references/, lays down the fixed articulated
     plan, and runs the orchestrator. The design agent derives the parts from the
     prompt (and any reference images) at runtime — there is no separate spec
-    step. A static object is just an articulated one the design agent gives no
-    joints.
+    step. A static object is just an articulated one whose joints are all
+    `fixed` — still a connected single-root joint tree, never an empty joints
+    array (a jointless multi-root design exports a degenerate URDF).
     """
     from .backends.claude_cli import ClaudeCLIBackend
     from .orchestrator.plan_generator import generate_plan_articulated
@@ -351,7 +352,7 @@ def run(
     if not ws.plan_path.is_file():
         typer.echo(
             f"no plan.json at {ws.plan_path}; seed one via "
-            f"`topos init {slug} --from-example <name>` or `topos make \"<prompt>\" --slug {slug}`"
+            f"`topos make \"<prompt>\" --slug {slug}`"
         )
         raise typer.Exit(code=1)
 
@@ -575,7 +576,7 @@ def skill_uninstall(
 
 # ---------- bpy docs RAG ----------
 
-bpy_docs_app = typer.Typer(name="bpy-docs", help="Manage the local Blender API docs index for the bpy_docs_search tool.", no_args_is_help=True)
+bpy_docs_app = typer.Typer(name="bpy-docs", help="Manage + query the local Blender API docs index (agents call `topos bpy-docs search` from Bash).", no_args_is_help=True)
 app.add_typer(bpy_docs_app, name="bpy-docs")
 
 

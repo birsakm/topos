@@ -137,8 +137,8 @@ L4  Critic              Critic protocol · ClaudeVisionCritic (default)
                         · rubric YAML decoupled from code
 L3  Knowledge layers    skills/topos_*/SKILL.md (agent-invoked capability bundles)
                         bpy_docs/ (local Blender API RAG index)
-L2  Tools               blender_run · render · render_multiview
-                        · render_turntable · export_glb · export_urdf · judge
+L2  Tools               render_multiview · render_part · verify_parts
+                        · generate_texture_image · export_glb · export_urdf · judge
 L1  Agent backends      AgentBackend protocol
                         · ClaudeCLIBackend (default; pinned model)
                         · CodexCLIBackend, GeminiCLIBackend (implemented)
@@ -177,16 +177,17 @@ topos/
 │   ├── backends/       # claude / codex / gemini agent backends
 │   ├── orchestrator/   # plan schema + DAG runner + tasks
 │   ├── blender/        # subprocess runtime + render / export wrappers
-│   ├── tools/          # tool registry (render, export_glb, judge, ...)
+│   ├── tools/          # tool registry (render_multiview, render_part, export_glb, judge, ...)
 │   ├── agents/visual_critic/  # Critic protocol + ClaudeVisionCritic / CLI critics / API critics
-│   ├── rubrics/        # rigid_object_v1.yaml, articulated_object_v1.yaml
+│   ├── rubrics/        # articulated_object_v1.yaml, part_shape_v1.yaml
 │   ├── prompts/        # system + per-domain Jinja2 templates
 │   ├── skills/         # topos_part_geometry / topos_joints_creator / ...
 │   └── urdf.py         # URDF writer; vendored into frozen projects on `topos freeze`
 ├── examples/
-│   ├── rigid_chair_simple/
 │   ├── articulated_drawer_cabinet/
-│   └── jet_engine_v4/
+│   ├── articulated_rocket/
+│   ├── jet_engine_v4/
+│   └── optimus_prime_bay_v1/
 ├── docs/
 │   ├── architecture.md
 │   ├── extending.md

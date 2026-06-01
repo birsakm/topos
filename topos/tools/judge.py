@@ -20,7 +20,7 @@ INPUT_SCHEMA: dict = {
     "type": "object",
     "properties": {
         "workspace": {"type": "string"},
-        "rubric": {"type": "string", "description": "Rubric short name (e.g. 'rigid_object_v1') or absolute path to .yaml"},
+        "rubric": {"type": "string", "description": "Rubric short name (e.g. 'articulated_object_v1') or absolute path to .yaml"},
         "image_pattern": {"type": "string", "description": "Glob pattern relative to workspace (e.g. 'artifacts/*.png')"},
         "images": {"type": "array", "items": {"type": "string"}, "description": "Explicit list, takes precedence over image_pattern"},
         "metadata": {"type": "object"},

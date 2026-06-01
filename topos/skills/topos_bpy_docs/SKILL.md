@@ -1,11 +1,9 @@
 ---
 name: topos_bpy_docs
-description: Search the local Blender Python API index (bpy.ops, bmesh.ops, mathutils) via the bpy_docs_search tool. Use when you need to verify an exact API signature, find a less common operator, or check a parameter name before writing code.
+description: Search the local Blender Python API index (bpy.ops, bmesh.ops, mathutils) via the `topos bpy-docs search` CLI (run from Bash). Use when you need to verify an exact API signature, find a less common operator, or check a parameter name before writing code.
 when_to_use: Any agent task that writes Blender Python and is uncertain about an exact API signature or parameter — especially for bmesh ops, advanced mathutils, or rarely-used bpy.ops modules. The framework's installed Blender version is pinned to the index, so signatures match what your code will actually run against.
 provides:
-  - bpy_docs_search(query, top_k=5, kinds=...) — keyword/substring ranked search across the indexed symbols
-related_tools:
-  - bpy_docs_search
+  - topos bpy-docs search "<query>" [--top-k N] [--kind op|bmesh_op|class|method|function] — keyword/substring ranked search across the indexed symbols, run via Bash
 related_skills:
   - topos_part_geometry
   - topos_furniture_hardware
@@ -17,7 +15,7 @@ related_skills:
 
 The framework ships a local index of the installed Blender's Python API — every `bpy.ops.<module>.<op>`, every `bmesh.ops.<op>`, plus `mathutils` classes and methods. The index is built by `topos bpy-docs index` (runs Blender once for ~2 seconds) and pinned to the user's actual Blender version (so signatures match runtime).
 
-The `bpy_docs_search` tool lets you query this index from inside an agent task. Use it when you need to verify:
+The `topos bpy-docs search` CLI (call it from Bash) lets you query this index from inside an agent task. Use it when you need to verify:
 
 - The exact parameter names and defaults of a `bpy.ops.*` operator (e.g. `primitive_cube_add` expects `size=2` not `size=1`)
 - Which `bmesh.ops.*` operation matches your need (e.g. `bevel` vs `inset_individual` vs `subdivide_edgering`)
@@ -40,12 +38,12 @@ Output (plain text, one block per match):
 ...
 ```
 
-Restrict to a single API namespace with `--kinds`:
+Restrict to a single API namespace with `--kind` (one of: op | bmesh_op | class | method | function):
 
 ```bash
-topos bpy-docs search "uv unwrap" --kinds op           # bpy.ops.* only
-topos bpy-docs search "intersect" --kinds bmesh_op      # bmesh.ops.* only
-topos bpy-docs search "rotation matrix" --kinds mathutils   # mathutils only
+topos bpy-docs search "uv unwrap" --kind op            # bpy.ops.* only
+topos bpy-docs search "intersect" --kind bmesh_op       # bmesh.ops.* only
+topos bpy-docs search "rotation matrix" --kind class    # mathutils classes (Matrix, Quaternion, ...)
 ```
 
 The Bash tool must be in your `allowed_tools` for this to work; it normally is
@@ -65,7 +63,7 @@ A single call returning 5 matches is essentially free relative to the cost of wr
 ## Querying tips
 
 - Multi-word queries score against name AND docstring — use natural language like `"bevel mesh edges"` or `"smart project uv unwrap"`
-- Restrict to a kind with `kinds: ["bmesh_op"]` when you specifically want bmesh ops
+- Restrict to a kind with `--kind bmesh_op` when you specifically want bmesh ops
 - If a top result has the right name but you want more detail, the result includes `short_doc` — usually that's enough; if not, you can grep the index file directly at `~/.config/topos/bpy_docs.json`
 
 ## When the index might be stale

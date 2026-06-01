@@ -3,8 +3,9 @@
 The index is built once by `topos bpy-docs index` (invokes Blender to walk
 its own Python API and dump JSON). Stored at the path in
 ``config.bpy_docs.index_path`` (default ``~/.config/topos/bpy_docs.json``).
-The ``bpy_docs_search`` L2 tool queries this index — keyword + substring
-ranking for now; embedding-based ranking can be added later.
+The ``topos bpy-docs search`` CLI (agent-facing, run via Bash) queries this
+index through ``search()`` below — keyword + substring ranking for now;
+embedding-based ranking can be added later.
 """
 
 from __future__ import annotations

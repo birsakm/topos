@@ -53,7 +53,7 @@ Rate the overall output quality. Which parts succeeded? Which fell short and why
 
 ### 2. Agent Behavior Analysis
 For each agent task: Did it follow best practices? (read skills first, check design.json, \
-iterate on code, use bpy_docs_search for API verification). Flag agents that wrote one-shot \
+iterate on code, use `topos bpy-docs search` for API verification). Flag agents that wrote one-shot \
 code without reading skills.
 
 ### 3. Failure Root Causes

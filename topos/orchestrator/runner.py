@@ -165,6 +165,13 @@ class Runner:
         # leaving a runtime-failed verify_parts un-rerunable even after the
         # corresponding fix task lands. Observed on optimus_prime_v4.
         self._dynamic_tasks: list[Task] = []
+        # Per-zz-tool snapshot of the FULL part list (set on first narrowing).
+        # The batch verify_parts / render_parts ToolTasks are the same objects
+        # across iters; the incremental-narrowing pass in _execute_tasks always
+        # recomputes each iter's subset from this full snapshot, never from a
+        # previously-narrowed list (else iter N would lose parts re-fixed in
+        # iter N that weren't re-fixed in iter N-1).
+        self._zz_full_parts: dict[str, list[str]] = {}
         tool_registry._ensure_default_tools_imported()
 
     # ---- event sink ----
@@ -383,6 +390,77 @@ class Runner:
 
     # ---- task execution ----
 
+    def _narrow_batch_parts(
+        self, tasks: list[Task], refixed_parts: set[str],
+    ) -> list[tuple[str, list[str]]]:
+        """On a fix iter, narrow the batch ``verify_parts`` / ``render_parts``
+        ToolTasks' ``args["parts"]`` to just the re-fixed parts and return
+        ``[(tool_id, narrowed_names), ...]`` for the ones actually narrowed.
+
+        Why this is sound — the load-bearing invariant: every part NOT being
+        re-touched this iter has a byte-identical ``src/parts/<name>.py``, so its
+        prior per-part render PNGs and verify result are still valid; only the
+        re-touched parts can have changed geometry / build status. On a 1-part
+        fix to a 16/21-part object this cuts the Blender re-run from O(all parts)
+        to O(re-touched).
+
+        CRITICAL GUARD — the assembly fix agent breaks the invariant. An
+        assembly/whole-object fix (an ``is_fix_rerun`` AgentTask whose id does
+        NOT match the per-part pattern — i.e. ``03_agent_build`` / ``99_agent_fix``)
+        is licensed by its prompt to edit ANY ``src/parts/<name>.py``, yet it
+        never appears in ``refixed_parts`` (which is built only from
+        ``_PART_AGENT_RE``-matching per-part fixes). When such a fix is present
+        this iter we therefore CANNOT safely narrow — any part may have changed —
+        so we restore the full list and bail. Narrowing only fires on iters whose
+        only fixes are per-part agents, where the invariant genuinely holds.
+
+        We narrow/restore from each tool's ORIGINAL full parts list (snapshotted
+        once in ``self._zz_full_parts``), never from a previously-narrowed list,
+        because these batch ToolTasks are the same objects across iters —
+        narrowing a prior-narrowed list would drop parts re-fixed this iter that
+        weren't re-fixed last iter. ``refixed_parts`` holds snake_case names (from
+        ``_PART_AGENT_RE``); ``args["parts"]`` holds the PascalCase design names,
+        so we join via ``_camel_to_snake`` — the same transform that built the
+        part-agent ids, hence lossless.
+
+        Empty intersection ⇒ nothing this tool covers was re-touched; restore the
+        full list (the deterministic-skip path then carries the tool forward
+        without re-running it at all).
+        """
+        from .expand import _camel_to_snake
+        from .fix_loop import _PART_AGENT_RE
+
+        # __new__-constructed Runners (test fixtures) may skip __init__; match the
+        # lazy-init posture of _subgraph_children / _dynamic_tasks.
+        if not hasattr(self, "_zz_full_parts"):
+            self._zz_full_parts = {}
+
+        # An assembly/whole-object fix can edit any part file → invariant void.
+        assembly_fix_present = any(
+            isinstance(t, AgentTask) and getattr(t, "is_fix_rerun", False)
+            and not _PART_AGENT_RE.match(t.id)
+            for t in tasks
+        )
+
+        narrowed_log: list[tuple[str, list[str]]] = []
+        for t in tasks:
+            if not (isinstance(t, ToolTask) and (
+                t.id.endswith("__zz_tool_verify_parts")
+                or t.id.endswith("__zz_tool_render_parts")
+            )):
+                continue
+            full = self._zz_full_parts.setdefault(t.id, list(t.args.get("parts", [])))
+            narrowed = (
+                [] if assembly_fix_present
+                else [p for p in full if _camel_to_snake(p) in refixed_parts]
+            )
+            if narrowed:
+                t.args["parts"] = narrowed
+                narrowed_log.append((t.id, narrowed))
+            else:
+                t.args["parts"] = list(full)
+        return narrowed_log
+
     def _execute_tasks(
         self,
         tasks: list[Task],
@@ -423,6 +501,17 @@ class Runner:
                 if m:
                     refixed_parts.add(m.group("name"))
         frozen: set[str] = (_frozen_parts(results) - refixed_parts) if iteration > 0 else set()
+
+        # Incremental verify/render narrowing (fix iters): re-run the batch
+        # verify_parts / render_parts tools over just the re-fixed parts when it's
+        # safe to (see _narrow_batch_parts — it self-guards against the
+        # assembly-fix case and restores full lists otherwise, so call it every
+        # fix iter, not only when refixed_parts is non-empty, to undo any prior
+        # iter's narrowing on these persistent task objects).
+        if iteration > 0:
+            for tid, names in self._narrow_batch_parts(tasks, refixed_parts):
+                print(f"  [narrow] {tid}: {len(names)}/"
+                      f"{len(self._zz_full_parts[tid])} parts ({', '.join(names)})")
 
         # Resume + carry-forward pre-filter:
         #  - At iter 0: skip tasks that have prior success (resume mode).

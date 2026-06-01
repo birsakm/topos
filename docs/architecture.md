@@ -25,14 +25,14 @@ Picture a small assembly line. You input intent (a natural-language description 
 
 ### L2 — Tools (`topos/tools/`)
 
-`tool_registry` is a decorator-driven dict of capabilities each agent can be granted via `allowed_tools` and each `ToolTask` invokes directly. Current tools:
+`tool_registry` is a decorator-driven dict of deterministic capabilities, each invoked directly by a `ToolTask` in the DAG. They are NOT exposed to the coding-agent backends (agents are launched with `mcp_servers=[]`; an agent's tools are only its `allowed_tools` — Read/Edit/Write/Glob/Bash). Current tools:
 
 | Tool | What it does | Where the heavy lift is |
 |---|---|---|
-| `blender_run` | Run a Blender Python script in the workspace | `topos/tools/_blender_subprocess.py` |
-| `render` | Single octant-view render of a geometry script | `topos/tools/render/wrapper.py` |
-| `render_multiview` | 8 standard octant views (eval set for the judge) | same wrapper, mode flag |
-| `render_turntable` | N-frame turntable (stub for GIF later) | same wrapper, mode flag |
+| `render_multiview` | 8 standard octant views (eval set for the judge) | `topos/tools/blender_render/wrapper.py` |
+| `render_part` | Per-part isolated views for the component critic | same wrapper, mode flag |
+| `verify_parts` | Each `parts/<name>.py` builds (buildability gate) | `topos/tools/blender_verifier/` |
+| `generate_texture_image` | Per-part Gemini Nano Banana texture PNG | `topos/tools/generate_texture_image.py` |
 | `export_glb` | Bake all transforms, export whole-scene GLB | `topos/tools/export/wrapper.py` |
 | `export_urdf` | Per-part GLB + URDF that references them | `export_wrapper.py` + `topos/urdf.py` |
 | `judge` | Load rubric, dispatch to `Critic.evaluate` | `topos/agents/visual_critic/` |
@@ -50,7 +50,7 @@ Two coexisting forms — both **agent-invoked** (the agent decides when to load 
 
 `Critic` is a Protocol: `evaluate(inputs, rubric) -> CriticResult`. `ClaudeVisionCritic` is the default: it copies images to a scratch dir, builds a structured prompt from a YAML rubric, calls `ClaudeCLIBackend` with `--allowed-tools Read` so the agent reads images via the Read tool, then parses the structured JSON response (with balanced-brace fallback for unwrap edge cases).
 
-Rubrics are YAML files: criteria with weights + descriptions, plus a pass threshold. Current: `rigid_object_v1`, `articulated_object_v1`. The `geometry_detail` and `fit_quality` criteria added to v1 force the judge to look beyond "is something visible" into "is it actually furniture-grade".
+Rubrics are YAML files: criteria with weights + descriptions, plus a pass threshold. Current: `articulated_object_v1` (assembly), `part_shape_v1` (per-part critic). The `geometry_detail` and `fit_quality` criteria added to v1 force the judge to look beyond "is something visible" into "is it actually furniture-grade".
 
 ### L5 — Orchestrator (`topos/orchestrator/`)
 

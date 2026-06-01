@@ -115,10 +115,10 @@ def test_render_multiview_surfaces_warnings(tmp_path: Path):
     assert result["stdout"] == stdout
 
 
-# --- render (single) ------------------------------------------------------
+# --- render_multiview (warning surfacing) ---------------------------------
 
 
-def test_render_single_also_surfaces_warnings(tmp_path: Path):
+def test_render_multiview_also_surfaces_warnings(tmp_path: Path):
     (tmp_path / "src").mkdir()
     (tmp_path / "src/build.py").write_text("# x\n")
 
@@ -127,7 +127,7 @@ def test_render_single_also_surfaces_warnings(tmp_path: Path):
     )
     fake_spawn_result = (stdout, "", 0, 1.0, [], False)
 
-    spec = get("render")
+    spec = get("render_multiview")
     with patch(
         "topos.tools.blender_render.tool._spawn_wrapper",
         return_value=fake_spawn_result,

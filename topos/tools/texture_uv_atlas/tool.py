@@ -1,6 +1,13 @@
 """``texture_uv_atlas`` tool: UV-atlas condition bake → Gemini image-gen →
 apply texture + render multiview + export GLB.
 
+EXPERIMENTAL / not wired into the default plan. The articulated plan
+(``plan_generator`` + ``expand.articulated_parts``) only ever schedules
+``generate_texture_image`` (flat per-part PNG); nothing emits a ToolTask for
+this tool, and the designer prompt no longer advertises ``kind: "uv_atlas"``.
+It survives as the only high-fidelity UV-conditioned path and is reachable only
+from the rocket example. Do not document it as a default texture mode.
+
 Reads ``design.json`` for per-part ``texture`` specs with ``kind: "uv_atlas"``.
 For each qualifying part, runs a 3-phase pipeline:
 

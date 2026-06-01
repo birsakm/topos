@@ -4,8 +4,6 @@ description: Drop-in build.py validator that catches disconnected mesh islands f
 when_to_use: EXPERIMENTAL — see STATUS section. Don't wire this into a production build.py without validating no false positives on the specific project. The intent: any AgentTask that writes src/build.py for a project whose parts are COMPOSITE (built from multiple sub-pieces joined together with bmesh.ops.join or bpy.ops.object.join).
 provides:
   - mesh-island contract (prototype): catches "spec said 'torso with 14 grille ribs and 24 bolts' but one of the bolts ended up at world origin instead of welded onto the torso" — when it works
-related_tools:
-  - blender_run
 related_skills:
   - topos_geometry_contracts  # fill-ratio + inter-part collision + cavity-fit, production-ready
   - topos_part_geometry       # bbox contract (per-part outer AABB) — coarser still

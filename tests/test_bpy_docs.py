@@ -56,23 +56,3 @@ def test_search_returns_short_doc_not_long_doc():
         # short_doc should be present and reasonably short
         assert "short_doc" in results[0]
         assert len(results[0]["short_doc"]) <= 320  # 300 cap + small overhead
-
-
-def test_bpy_docs_search_tool_registered():
-    """The tool registry should include bpy_docs_search after default imports."""
-    from topos.tools.registry import _ensure_default_tools_imported, get
-    _ensure_default_tools_imported()
-    spec = get("bpy_docs_search")
-    assert spec.name == "bpy_docs_search"
-    assert "blender" in spec.description.lower()
-
-
-def test_bpy_docs_search_tool_callable():
-    """Calling the registered tool function should return well-formed output."""
-    from topos.tools.registry import _ensure_default_tools_imported, get
-    _ensure_default_tools_imported()
-    spec = get("bpy_docs_search")
-    out = spec.func(query="primitive cube", top_k=2)
-    assert out["success"] is True
-    assert len(out["matches"]) > 0
-    assert "symbol" in out["matches"][0]

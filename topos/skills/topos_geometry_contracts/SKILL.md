@@ -6,8 +6,6 @@ provides:
   - fill-ratio check: catches "spec declared cavity but mesh ended up solid" (boolean DIFFERENCE silently failed)
   - inter-part collision check: catches "two parts unintentionally interpenetrate" via AABB overlap on joint-unrelated pairs
   - cavity-fit check: catches "child too small / too big relative to parent's declared cavity" (the finger-wide gap case)
-related_tools:
-  - blender_run
 related_skills:
   - topos_part_geometry      # bbox contract is the baseline; these contracts layer on top
   - topos_design_articulated # design.json's "cavity" and joints fields are what these checks read
