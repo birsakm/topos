@@ -142,7 +142,24 @@ class GeminiBackend:
             try:
                 with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
                     body = resp.read()
-                break  # success — fall through to JSON parsing below
+                # HTTP 200 — but parse + image-extraction is INSIDE the retry
+                # loop on purpose. The preview model intermittently returns a
+                # 200 with NO image part (empty/text-only response — observed in
+                # the wild: "no image data, Text parts: []"). That's a transient
+                # server flake, identical in nature to a 5xx, so retry it rather
+                # than failing the call (which, under image-default, would
+                # otherwise leave the part flat for no good reason).
+                response_json = json.loads(body)
+                png = self._extract_png(response_json)
+                return ImageGenResult(
+                    success=True,
+                    png_bytes=png,
+                    mime_type="image/png",
+                    duration_s=time.monotonic() - start_overall,
+                    cost_usd=gemini_image_cost_usd(self.model, n_images=1),
+                    model=self.model,
+                    raw_meta={"response_size_bytes": len(body)},
+                )
             except urllib.error.HTTPError as e:
                 err_body = e.read().decode("utf-8", errors="replace") if e.fp else ""
                 # Retry on 429 (rate limit) and 5xx (server error); fail-fast on 4xx.
@@ -162,6 +179,15 @@ class GeminiBackend:
                         duration_s=time.monotonic() - start_overall,
                         error=last_error,
                     )
+            except (json.JSONDecodeError, RuntimeError) as e:
+                # Empty / no-image / unparseable 200 — transient, retry like a 5xx.
+                last_error = f"response parse failed: {e}"
+                if attempt >= self.max_retries:
+                    return ImageGenResult(
+                        success=False, png_bytes=b"", model=self.model,
+                        duration_s=time.monotonic() - start_overall,
+                        error=last_error,
+                    )
             attempt += 1
             print(
                 f"[gemini image_gen] attempt {attempt}/{self.max_retries + 1} "
@@ -170,22 +196,3 @@ class GeminiBackend:
             )
             time.sleep(wait_s)
             wait_s *= 2
-        duration_s = time.monotonic() - start_overall
-        try:
-            response_json = json.loads(body)
-            png = self._extract_png(response_json)
-        except (json.JSONDecodeError, RuntimeError) as e:
-            return ImageGenResult(
-                success=False, png_bytes=b"", model=self.model,
-                duration_s=duration_s,
-                error=f"response parse failed: {e}",
-            )
-        return ImageGenResult(
-            success=True,
-            png_bytes=png,
-            mime_type="image/png",
-            duration_s=duration_s,
-            cost_usd=gemini_image_cost_usd(self.model, n_images=1),
-            model=self.model,
-            raw_meta={"response_size_bytes": len(body)},
-        )

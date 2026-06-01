@@ -186,6 +186,28 @@ def latest_judge_passed(results: dict[str, TaskResult]) -> bool | None:
     return False
 
 
+def assembly_judge_result(results: dict[str, TaskResult]) -> TaskResult | None:
+    """The whole-object (assembly) judge result — the single judge that is NOT a
+    per-part judge (id does not match ``_PART_JUDGE_RE``; e.g. ``08_tool_judge``).
+    Returns None if it hasn't run yet (e.g. build failed before it)."""
+    for j in all_judge_results(results):
+        if not _PART_JUDGE_RE.match(j.id):
+            return j
+    return None
+
+
+def assembly_judge_passed(results: dict[str, TaskResult]) -> bool | None:
+    """Did the whole-object assembly judge pass? None if it hasn't run.
+
+    This is the authoritative verdict on the deliverable. Per-part judges are
+    pre-assembly quality gates; once the assembly passes they should no longer
+    drive iteration (see ``build_fix_tasks``)."""
+    asm = assembly_judge_result(results)
+    if asm is None:
+        return None
+    return asm.output.get("passed") is True
+
+
 def collect_runtime_failures(results: dict[str, TaskResult]) -> list[dict]:
     """Scan all tool task results for runtime ``failed_parts`` records.
 
@@ -246,6 +268,16 @@ def build_fix_tasks(
     # Local import to avoid a hard prompt-package dep at module-load time
     # (and to keep this module testable without standing up the prompt env).
     from ..prompts import render as render_prompt
+
+    # Once the whole-object ASSEMBLY judge passes, the deliverable is done — stop.
+    # Per-part judges are pre-assembly quality gates; letting a single minor part
+    # (e.g. a slightly-faceted seat scoring 0.50 on its shape critic) keep
+    # generating fixes burns iterations AND risks regressing an already-passing
+    # assembly (observed: a 0.92 assembly fell to 0.84 in a later per-part-chasing
+    # iter, and the run reported "failed" despite a great whole object). The
+    # assembly judge is the authoritative verdict; if it passes, return no fixes.
+    if assembly_judge_passed(results) is True:
+        return []
 
     fix_tasks: list[AgentTask] = []
     for judge in all_judge_results(results):

@@ -362,7 +362,15 @@ class Runner:
             prev_scores = cur_scores
 
         duration_s = time.monotonic() - start
-        final_judge = fix_loop.latest_judge_passed(results)
+        # The headline verdict is the whole-object ASSEMBLY judge — the
+        # deliverable. A failing per-part shape critic on a minor part must not
+        # report the run as failed when the assembled object passed (and the
+        # fix-loop now stops on assembly-pass too, see build_fix_tasks). Fall
+        # back to the all-judges signal only if no assembly judge ran (e.g. a
+        # domain with per-part judges only).
+        final_judge = fix_loop.assembly_judge_passed(results)
+        if final_judge is None:
+            final_judge = fix_loop.latest_judge_passed(results)
         run_ok = all(r.success for r in results.values()) and (final_judge is not False)
 
         report = RunReport(

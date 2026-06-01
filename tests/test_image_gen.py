@@ -206,6 +206,48 @@ def test_gemini_generate_handles_http_error():
     assert "HTTP 429" in result.error
 
 
+def _mock_resp(body_bytes):
+    m = MagicMock()
+    m.read.return_value = body_bytes
+    m.__enter__ = lambda self: self
+    m.__exit__ = lambda self, *a: None
+    return m
+
+
+def _png_response(fake_png: bytes) -> bytes:
+    return json.dumps({"candidates": [{"content": {"parts": [
+        {"inlineData": {"mimeType": "image/png", "data": base64.b64encode(fake_png).decode()}}
+    ]}}]}).encode()
+
+
+_EMPTY_RESPONSE = json.dumps({"candidates": [{"content": {"parts": [{"text": ""}]}}]}).encode()
+
+
+def test_gemini_retries_on_empty_response_then_succeeds():
+    """A 200 with NO image part (the observed Nano-Banana flake) is transient —
+    it must be RETRIED, not failed. First attempt empty, second has an image →
+    success. Without the retry, image-default would leave the part flat for a
+    transient blip (which is exactly what happened to leg2 in the stool run)."""
+    backend = GeminiBackend(api_key="fake", retry_base_wait_s=0.01)
+    fake_png = b"\x89PNG" + b"\x00" * 50
+    with patch("urllib.request.urlopen",
+               side_effect=[_mock_resp(_EMPTY_RESPONSE), _mock_resp(_png_response(fake_png))]):
+        result = backend.generate("a red ball")
+    assert result.success is True
+    assert result.png_bytes == fake_png
+
+
+def test_gemini_empty_response_exhausts_retries_then_fails_cleanly():
+    """If EVERY attempt is empty, fail after max_retries with the parse error
+    (degrade-to-flat then happens one layer up in generate_texture_image)."""
+    backend = GeminiBackend(api_key="fake", retry_base_wait_s=0.01, max_retries=2)
+    with patch("urllib.request.urlopen", side_effect=[_mock_resp(_EMPTY_RESPONSE)] * 3):
+        result = backend.generate("x")
+    assert result.success is False
+    assert "no image data" in result.error
+    assert result.cost_usd == 0.0
+
+
 # ---------------- generate_texture_image tool ----------------
 #
 # Tool was refactored 2026-05-14: input is now (workspace, part_name) — the

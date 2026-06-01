@@ -14,6 +14,7 @@ from topos.orchestrator.fix_loop import (
     _PART_FIX_RE,
     _PART_JUDGE_RE,
     all_judge_results,
+    assembly_judge_passed,
     build_fix_tasks,
     frozen_parts,
     latest_judge_passed,
@@ -157,6 +158,34 @@ def test_build_fix_tasks_empty_when_all_pass():
         "14_tool_judge": _judge("14_tool_judge", passed=True, score=0.7),
     }
     assert build_fix_tasks(results, next_iter=1) == []
+
+
+def test_build_fix_tasks_stops_when_assembly_passes_despite_failing_part():
+    """F2: once the whole-object ASSEMBLY judge passes, the loop stops — a
+    failing per-part shape critic on a minor part must NOT keep generating
+    fixes (which burns iters and can regress an already-passing assembly,
+    observed: 0.92 → 0.84 in a later per-part-chasing iter)."""
+    results = {
+        "08_tool_judge": _judge("08_tool_judge", passed=True, score=0.80),   # assembly PASS
+        "02_subgraph_parts__01_tool_judge_part_seat":
+            _judge("02_subgraph_parts__01_tool_judge_part_seat", passed=False, score=0.49),
+    }
+    assert assembly_judge_passed(results) is True
+    assert build_fix_tasks(results, next_iter=1) == []
+
+
+def test_build_fix_tasks_still_fixes_parts_when_assembly_fails():
+    """The gate is assembly-PASS, not assembly-presence: while the assembly is
+    still failing, per-part fixes keep flowing (and the assembly fix too)."""
+    results = {
+        "08_tool_judge": _judge("08_tool_judge", passed=False, score=0.55),
+        "02_subgraph_parts__01_tool_judge_part_seat":
+            _judge("02_subgraph_parts__01_tool_judge_part_seat", passed=False, score=0.49),
+    }
+    assert assembly_judge_passed(results) is False
+    ids = {t.id for t in build_fix_tasks(results, next_iter=1)}
+    assert "99_agent_fix" in ids                    # assembly fix
+    assert "99_agent_fix_part_seat" in ids          # per-part fix
 
 
 # ---------- latest_judge_passed semantics ----------
