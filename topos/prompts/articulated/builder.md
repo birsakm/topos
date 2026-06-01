@@ -33,7 +33,7 @@ BUILDERS = {
 }
 
 def _attach_fallback_material(obj, spec):
-    """If no material was assigned by build_* / texture_*, attach a flat
+    """If no material was assigned by _apply_texture (no PNG), attach a flat
     Principled BSDF from spec['color_rgba'] so the GLB ships with at
     least a baseColorFactor (otherwise viewers render default gray)."""
     if obj.data.materials:
@@ -49,26 +49,55 @@ def _attach_fallback_material(obj, spec):
     print(f"[MATERIAL_FALLBACK] {obj.name}: no explicit material; attached flat BSDF {rgba}")
 
 
-def _run_texture_pass(obj, spec, builder_fn):
-    """Optional: call texture_<lower>(obj) if defined in parts/<lower>.py.
-    Non-fatal — log + continue on failure.
+def _apply_texture(obj, builder_fn):
+    """Framework-owned texture pass (parts contain NO texture code). If a
+    generated material image exists at ``src/textures/<lower>.png`` — written by
+    the ``generate_texture_image`` tool from design.json's ``texture.prompt`` —
+    UV-unwrap the object (Smart UV Project) and bind the PNG as the Principled
+    Base Color. Returns True if an image was bound; False when there's no PNG, so
+    the caller applies the flat ``color_rgba`` fallback.
 
-    Derive the texture function name from the builder's __name__ (strip the
-    ``build_`` prefix) rather than ``spec['name'].lower()``. PascalCase names
-    like ``DrawerTop`` lowercase to ``drawertop`` (no underscore), but the
-    part agent writes ``texture_drawer_top`` to match its file name
-    ``parts/drawer_top.py``. Using the builder's actual name keeps these in
-    lockstep for any multi-word part."""
+    ``<lower>`` is derived from the builder's ``__name__`` (``build_<lower>``) —
+    the same stem the texture tool used (``_camel_to_snake(part_name)``) — so the
+    two sides can't drift even for multi-word parts (``DrawerTop`` →
+    ``drawer_top``). Non-fatal: log + fall through to flat on any failure."""
     builder_name = getattr(builder_fn, "__name__", "")
-    lower_name = builder_name[len("build_"):] if builder_name.startswith("build_") else spec['name'].lower()
-    tex_fn = getattr(sys.modules[builder_fn.__module__],
-                     f"texture_{lower_name}", None)
-    if not callable(tex_fn):
-        return
+    lower_name = builder_name[len("build_"):] if builder_name.startswith("build_") else obj.name.lower()
+    png = HERE / "textures" / f"{lower_name}.png"
+    if not png.is_file():
+        return False
     try:
-        tex_fn(obj)
+        # 1) UV unwrap — required before binding an image or sampling is undefined.
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.smart_project(island_margin=0.02)   # default angle_limit (version-safe)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        # 2) Material: ImageTexture -> Principled Base Color.
+        mat = bpy.data.materials.new(name=f"{obj.name}_tex")
+        mat.use_nodes = True
+        nt = mat.node_tree
+        nt.nodes.clear()
+        timg = nt.nodes.new("ShaderNodeTexImage")
+        timg.image = bpy.data.images.load(str(png), check_existing=True)
+        bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+        bsdf.inputs["Roughness"].default_value = 0.6
+        nt.links.new(timg.outputs["Color"], bsdf.inputs["Base Color"])
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        obj.data.materials.clear()
+        obj.data.materials.append(mat)
+        print(f"[TEXTURE] {obj.name}: bound {png.name}")
+        return True
     except Exception as e:
-        print(f"[TEXTURE_WARN] {spec['name']}: texture pass failed: {e}")
+        print(f"[TEXTURE_WARN] {obj.name}: image bind failed ({e}); using flat color")
+        try:
+            bpy.ops.object.mode_set(mode="OBJECT")
+        except Exception:
+            pass
+        return False
 
 
 # Build each part. For parts with an `instances` list, build once and
@@ -96,8 +125,8 @@ for spec in DESIGN["parts"]:
                 (obj.location[a] if hasattr(obj.location, "__getitem__") else 0.0) + txyz[a]
                 for a in range(3)
             )
-            _run_texture_pass(obj, spec, builder)
-            _attach_fallback_material(obj, spec)
+            _apply_texture(obj, builder)
+            _attach_fallback_material(obj, spec)   # flat color_rgba if no image was bound
         # Remove the now-unused template object
         bpy.data.objects.remove(canonical, do_unlink=True)
         bpy.context.view_layer.update()
@@ -112,8 +141,8 @@ for spec in DESIGN["parts"]:
             if spec.get("world_rpy"):
                 obj.rotation_euler = tuple(spec["world_rpy"])
             bpy.context.view_layer.update()
-        _run_texture_pass(obj, spec, builder)
-        _attach_fallback_material(obj, spec)
+        _apply_texture(obj, builder)
+        _attach_fallback_material(obj, spec)   # flat color_rgba if no image was bound
 
 # Validate every part's world bbox against the design contract. For instance
 # parts, validate ONE instance (the first) — extents are per-instance, not

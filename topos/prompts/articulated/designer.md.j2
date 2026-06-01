@@ -43,15 +43,17 @@ If reference image(s) are provided in the workspace (`prompts/references/`), Rea
         {"rotation_euler": [rx, ry, rz], "translation": [tx, ty, tz]}, // both
         {"translation": [tx, ty, tz]}                                  // translation only (meters)
       ],
-      // Optional texture spec. When present, the part's Python file MUST also
-      // define `texture_<lowercase_name>(obj)` alongside `build_<...>()`; the
-      // build harness will call it after construction. See SKILL
-      // `topos_texture_creator` for the patterns.
+      // Texture spec — IMAGE GENERATION IS THE DEFAULT. Set a short `prompt`
+      // describing the material; the framework generates a tileable PNG (Gemini
+      // Nano Banana) and the build harness UV-unwraps + binds it automatically.
+      // Geometry code NEVER touches texture — you author the look here, in
+      // design.json, and nowhere else. The PNG path is derived automatically
+      // (src/textures/<part_name>.png); do NOT specify it. Give EVERY part a
+      // `texture.prompt` unless you deliberately want it left flat (then omit
+      // the whole `texture` block and it renders in `color_rgba`).
       "texture": {
-        "kind": "procedural | image",                 // procedural = shader nodes only; image = generate flat tileable PNG
-        "prompt": "<for image kind: short image-gen prompt, e.g. 'seamless tileable rough walnut wood plank, 4k'>",
-        "image_relpath": "<for image kind only: where the PNG will live, e.g. 'src/textures/drawer_front.png'>",
-        "material_hint": "<short cue passed to the part-geom agent, e.g. 'rough walnut wood, low gloss'>"
+        "prompt": "<image-gen prompt for the material, e.g. 'seamless tileable brushed aluminium, fine linear grain, matte, 4k'>",
+        "material_hint": "<optional one-line material cue, e.g. 'matte black rubber'>"
       }
     }
     // ... more parts

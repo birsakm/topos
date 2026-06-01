@@ -5,7 +5,8 @@ description: |
   its declared role, and is it refined enough to read as a real object?
 
   This is per-part vision critic — runs after each part agent writes its
-  build_<name> + texture_<name>, BEFORE assembly. Catches "Handle is just a
+  build_<name> geometry, BEFORE assembly. Per-part renders are flat (shape-
+  focused); texture is applied later at assembly. Catches "Handle is just a
   bar" and "Frame has no bevel" before they get baked into a full cabinet run.
 
   Assembly-level rubric (articulated_object_v1) covers fit / collision /

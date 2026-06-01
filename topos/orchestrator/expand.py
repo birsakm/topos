@@ -30,9 +30,11 @@ from .tasks import AgentTask, SubgraphTask, Task, ToolTask
 _PART_SKILLS = [
     "topos_part_geometry",
     "topos_bpy_docs",
-    "topos_texture_creator",
     "topos_blender_pitfalls",
 ]
+# NB: no texture skill here — part agents write geometry only. Texture is owned
+# by the design agent (authors texture.prompt in design.json) + the build
+# harness (generates + UV-binds the PNG). See topos_texture_creator (design).
 _HARDWARE_KEYWORDS = {"handle", "pull", "knob", "grip", "hinge", "latch", "catch", "lock"}
 # Drivetrain / running-gear / insertion mechanisms — parts that read as machine
 # only when built as a fixed multi-primitive assembly (crankset = axle + arms +

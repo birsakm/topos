@@ -86,7 +86,7 @@ def _parse_args() -> argparse.Namespace:
                    help="agent's geometry script (build.py). Required for all modes except mode=part with --parts-dir.")
     p.add_argument("--parts-dir", default=None,
                    help="mode=part only: directory containing parts/<lower>.py files (typically <ws>/src/parts). "
-                        "Replaces --script. Each named part's build_<lower>() is called directly + texture_<lower>() if defined.")
+                        "Replaces --script. Each named part's build_<lower>() is called directly (geometry only; per-part renders are flat).")
     p.add_argument("--output-dir", required=True, help="absolute output directory")
     p.add_argument("--n-views", type=int, default=8)
     p.add_argument("--n-frames", type=int, default=36)
@@ -149,14 +149,14 @@ def _build_parts_scene(parts_dir: Path, part_names: list[str]) -> None:
     the build-agent has authored src/build.py.
 
     Matches the convention build.py uses: import path is ``parts.<snake>`` so
-    we insert parts_dir's PARENT (i.e. src/) into sys.path. After build,
-    optionally calls texture_<snake>(obj) if present.
+    we insert parts_dir's PARENT (i.e. src/) into sys.path. Parts are geometry
+    only — no texture pass here; per-part renders are flat (color_rgba) since
+    they judge shape, and the texture PNGs may not exist yet at this stage.
 
     Per CLAUDE.md rule #12 (fail loud): import / build failures are
     collected and reported as a SystemExit at the end so the orchestrator
     sees a non-zero exit (and the per-part judge doesn't score a partial
-    scene as if everything worked). Texture failures stay non-fatal —
-    missing texture is cosmetic, not structural.
+    scene as if everything worked).
 
     Buildability verification is a SEPARATE concern handled upstream by
     the ``verify_parts`` tool — by the time this runs, parts are expected
@@ -195,14 +195,10 @@ def _build_parts_scene(parts_dir: Path, part_names: list[str]) -> None:
             failures.append(msg)
             continue
         obj.name = name
-        # Optional per-part texture pass (mirrors builder.md template).
-        # Texture failures stay non-fatal — missing texture is cosmetic.
-        tex_fn = getattr(module, f"texture_{lower}", None)
-        if callable(tex_fn):
-            try:
-                tex_fn(obj)
-            except Exception as e:
-                print(f"[render_wrapper] texture_{lower}() failed (non-fatal): {e}")
+        # Per-part renders are shape-focused and run before the texture PNGs may
+        # exist; they use flat color_rgba (applied by _ensure_pbr_materials). The
+        # generated image textures are bound only in the whole-object build.py
+        # (_apply_texture), which is what the assembly judge + GLB evaluate.
         print(f"[render_wrapper] built part: {name}")
     if failures:
         raise SystemExit(

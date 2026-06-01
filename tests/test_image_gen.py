@@ -314,37 +314,38 @@ def test_generate_texture_image_tool_image_kind_surfaces_gemini_cost(tmp_path, m
     assert out["usage"] == {"model": "gemini-3.1-flash-image-preview", "n_images": 1}
 
 
-def test_generate_texture_image_tool_procedural_kind_is_no_op(tmp_path, monkeypatch):
-    """kind='procedural' → tool returns success with cost=0 and DOES NOT call
-    the backend. Procedural textures live in the part's texture_<name>(obj)
-    Python; no image to materialize."""
+def test_generate_texture_image_tool_no_prompt_is_no_op(tmp_path, monkeypatch):
+    """A texture block with no ``prompt`` → no image-gen, returns success
+    kind='flat' cost=0 and DOES NOT call the backend. The part is left flat
+    (build.py renders it in color_rgba). Image-gen is keyed solely on a prompt
+    being present — there is no longer a ``kind`` field."""
     monkeypatch.setenv("TOPOS_ALLOW_STUB_IMAGE_GEN", "1")
     _write_design(tmp_path, [{
         "name": "Frame",
-        "texture": {"kind": "procedural", "material_hint": "dark walnut"},
+        "texture": {"material_hint": "dark walnut"},   # no prompt
     }])
     _ensure_default_tools_imported()
     spec = get("generate_texture_image")
     out = spec.func(workspace=str(tmp_path), part_name="Frame", backend="stub")
 
     assert out["success"] is True
-    assert out["kind"] == "procedural"
+    assert out["kind"] == "flat"
     assert out["cost_usd"] == 0.0
     assert out["usage"]["n_images"] == 0
     assert out["image_path"] == ""
-    assert "no image-gen needed" in out["note"]
+    assert "no texture.prompt" in out["note"]
 
 
 def test_generate_texture_image_tool_missing_texture_field_is_no_op(tmp_path):
-    """A part with no ``texture`` field at all is legal (flat color from
-    ``material`` field handles it). Tool returns kind='missing', cost=0."""
+    """A part with no ``texture`` field at all is legal — left flat
+    (color_rgba). Tool returns kind='flat', cost=0."""
     _write_design(tmp_path, [{"name": "Frame"}])
     _ensure_default_tools_imported()
     spec = get("generate_texture_image")
     out = spec.func(workspace=str(tmp_path), part_name="Frame")
 
     assert out["success"] is True
-    assert out["kind"] == "missing"
+    assert out["kind"] == "flat"
     assert out["cost_usd"] == 0.0
 
 
@@ -367,48 +368,53 @@ def test_generate_texture_image_tool_design_json_missing_raises(tmp_path):
         spec.func(workspace=str(tmp_path), part_name="Frame")
 
 
-def test_generate_texture_image_tool_image_kind_missing_prompt_returns_failed(tmp_path):
-    """kind='image' with no ``prompt`` field is a design-agent-output schema
-    problem — return success=False so the run continues with flat color, but
-    cost stays 0 (nothing got generated)."""
+def test_generate_texture_image_tool_path_is_derived_not_from_design(tmp_path, monkeypatch):
+    """The PNG path is DERIVED as src/textures/<snake(part_name)>.png — any
+    image_relpath the design agent wrote is ignored, so the two sides
+    (image-gen + build.py's _apply_texture) can't drift."""
+    monkeypatch.setenv("TOPOS_ALLOW_STUB_IMAGE_GEN", "1")
     _write_design(tmp_path, [{
-        "name": "Frame",
-        "texture": {"kind": "image", "image_relpath": "src/textures/frame.png"},
-        # NB: no 'prompt'
+        "name": "SeatPost",
+        # a stale/wrong image_relpath here must NOT be used
+        "texture": {"prompt": "seamless tileable aluminium", "image_relpath": "src/textures/WRONG.png"},
     }])
     _ensure_default_tools_imported()
     spec = get("generate_texture_image")
-    out = spec.func(workspace=str(tmp_path), part_name="Frame")
-    assert out["success"] is False
-    assert out["cost_usd"] == 0.0
-    assert "prompt" in out["error"]
+    out = spec.func(workspace=str(tmp_path), part_name="SeatPost", backend="stub")
+    assert out["success"] is True
+    assert out["kind"] == "image"
+    assert out["image_path"] == "src/textures/seat_post.png"     # derived from PascalCase → snake
+    assert (tmp_path / "src/textures/seat_post.png").is_file()
+    assert not (tmp_path / "src/textures/WRONG.png").exists()
 
 
-def test_generate_texture_image_tool_rejects_path_traversal(tmp_path, monkeypatch):
-    """image_relpath escaping the workspace must be rejected — design agent
-    must not be able to write outside the sandboxed workspace."""
+def test_generate_texture_image_tool_malicious_image_relpath_is_neutralized(tmp_path, monkeypatch):
+    """A path-traversal image_relpath in design.json is now harmless: the path
+    is derived from the (validated) part name, so the malicious field is simply
+    ignored and the PNG lands safely under src/textures/."""
     monkeypatch.setenv("TOPOS_ALLOW_STUB_IMAGE_GEN", "1")
     _write_design(tmp_path, [{
         "name": "Frame",
-        "texture": {
-            "kind": "image",
-            "prompt": "x",
-            "image_relpath": "../../etc/passwd",
-        },
+        "texture": {"prompt": "x", "image_relpath": "../../etc/passwd"},
     }])
     _ensure_default_tools_imported()
     spec = get("generate_texture_image")
-    with pytest.raises(ValueError, match="escapes workspace"):
-        spec.func(workspace=str(tmp_path), part_name="Frame", backend="stub")
+    out = spec.func(workspace=str(tmp_path), part_name="Frame", backend="stub")
+    assert out["success"] is True
+    assert out["image_path"] == "src/textures/frame.png"
+    assert (tmp_path / "src/textures/frame.png").is_file()
 
 
-def test_generate_texture_image_tool_no_api_key_returns_clean_error(tmp_path, monkeypatch):
-    """No Gemini key configured + kind='image' → success=False (not raise),
-    so build can continue with flat-color fallback. The Q2 'non-fatal'
-    decision from chunk D's brainstorming."""
+def test_generate_texture_image_tool_no_api_key_degrades_to_flat(tmp_path, monkeypatch):
+    """No Gemini key configured + a texture.prompt → DEGRADE, not fail:
+    success=True, kind='degraded', cost=0, error surfaced. Image texture is
+    best-effort; flat color_rgba is the floor (build.py's _apply_texture falls
+    back when the PNG is absent). This must NOT fail the DAG — otherwise, with
+    image-gen the default for every part, one transient failure would abort the
+    whole build via the subgraph's all(child.success) rule."""
     _write_design(tmp_path, [{
         "name": "Frame",
-        "texture": {"kind": "image", "prompt": "x", "image_relpath": "src/textures/y.png"},
+        "texture": {"prompt": "x"},
     }])
     _ensure_default_tools_imported()
     spec = get("generate_texture_image")
@@ -418,7 +424,8 @@ def test_generate_texture_image_tool_no_api_key_returns_clean_error(tmp_path, mo
         "image_gen": {"default": "gemini", "gemini": {"api_key": None, "model": "gemini-3.1-flash-image-preview"}}
     }):
         out = spec.func(workspace=str(tmp_path), part_name="Frame")
-    assert out["success"] is False
+    assert out["success"] is True
+    assert out["kind"] == "degraded"
     assert out["cost_usd"] == 0.0
     assert "api_key not configured" in out["error"]
 

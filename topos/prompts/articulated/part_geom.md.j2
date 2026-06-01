@@ -12,20 +12,13 @@ def build_{{ lower_name }}():
     return obj   # obj.name MUST equal "{{ part_name }}"
 ```
 
-If `design.json` includes a `"texture"` field for this part, ALSO define a sibling
-function `texture_{{ lower_name }}(obj)` in the same file. The build harness calls
-it after `build_{{ lower_name }}()` with the constructed object. See the SKILL
-`topos_texture_creator` for procedural-vs-image patterns and UV unwrap details.
-Failure inside `texture_*` is non-fatal — build.py logs and continues with flat material.
-
-**Do NOT call `topos generate-texture` from Bash.** The framework dispatches a
-separate `generate_texture_image` ToolTask per part (between your part task and
-the build task) that materializes the PNG from `design.json[texture.prompt]`
-into `design.json[texture.image_relpath]` BEFORE `texture_{{ lower_name }}(obj)`
-runs at build time. Your job is only to write the `texture_{{ lower_name }}(obj)`
-shader-binding code — for image textures, read the PNG path from design.json
-and load it with `bpy.data.images.load`; if the file isn't there (texture
-ToolTask failed), fall back to a flat material.
+**Write GEOMETRY ONLY — no texture / material / shader code.** Do NOT define a
+`texture_{{ lower_name }}` function, do NOT set up image textures, materials, UV
+maps, or shader nodes. The framework textures every part automatically AFTER you
+build it (it generates the material image from `design.json` and UV-binds it at
+assembly time). Your only material responsibility is the single
+`obj.color = tuple(spec["color_rgba"])` line in step 6 (a flat fallback tint).
+Anything beyond that is wasted work and will be overwritten.
 
 3. **Check for `instances` in your spec.** If `spec.get("instances")` is non-empty in design.json, your part is a **template** that build.py will duplicate. In that case:
 

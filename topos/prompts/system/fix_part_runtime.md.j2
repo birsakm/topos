@@ -38,7 +38,7 @@ The buildability check (`verify_parts` tool) failed for `{{ part_name }}` before
 ## Hard constraints
 
 - **Edit `src/parts/{{ lower_name }}.py` only**. Do NOT touch other parts' files, `src/build.py`, `src/joints.yaml`, or `src/design.json`. Other parts may have passed verify already.
-- **Preserve the function signatures**: `build_{{ lower_name }}()` must still exist and return a bpy MESH object named `"{{ part_name }}"`. If `texture_{{ lower_name }}(obj)` exists, keep its signature.
+- **Preserve the function signature**: `build_{{ lower_name }}()` must still exist and return a bpy MESH object named `"{{ part_name }}"`. Geometry only — no texture/material code (the framework textures the part automatically).
 - **Preserve the world bbox** the original part agent designed for. The part's `world_xyz` / `world_extents` from `src/design.json` is the contract — your fix shouldn't shift it.
 - **Minimal change**. If the bug is one bad attribute set, just fix that line. Don't rewrite the geometry.
 

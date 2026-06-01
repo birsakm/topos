@@ -13,9 +13,9 @@ A small wooden single-drawer cabinet.
 - Add `outer_bevel_radius` ~3-5mm to Frame, `front_inset_depth` ~3-5mm and `front_inset_margin` ~10-15mm to Drawer
 - Color hints: Frame [0.45, 0.27, 0.15, 1.0] (wood brown), Drawer [0.60, 0.42, 0.25, 1.0] (lighter wood), Handle [0.30, 0.20, 0.10, 1.0] (dark wood)
 - Joint limits: drawer_slide can slide -0.10 to +0.15 m from rest
-- **Realistic image-based textures** (Pattern 2 in `topos_texture_creator`): emit `texture: {kind: "image", prompt: "...", image_relpath: "src/textures/<part>.png"}` for **Frame and Drawer** in design.json. The framework's per-part `generate_texture_image` ToolTask will materialize the real photo-grade PNG via Nano Banana 2; the part agent's `texture_<name>(obj)` just binds the PNG via `ShaderNodeTexImage`. Suggested prompts:
-  - Frame: `seamless tileable photorealistic rough walnut wood plank, 4k, top-down`
-  - Drawer: `seamless tileable photorealistic light oak wood, fine grain, 4k, top-down`
-- **Handle texture**: a simple procedural shader is enough — the handle's surface is small and the image-gen budget is better spent on Frame/Drawer. **You must still write `texture_handle(obj)`** following Pattern 1 in `topos_texture_creator`: a Principled BSDF with a wood-tint Base Color and modest roughness. A flat baseColorFactor (no Wave/Noise needed) is fine; the point is that every part gets a material so the exported GLB has materials for all three parts, not just Frame and Drawer.
+- **Image textures** (image-gen is the default; see `topos_texture_creator`): give each part a `texture: {prompt: "..."}` in design.json. The framework generates the PNG (Nano Banana 2) and UV-binds it at build time — geometry agents write no texture code, and you do NOT specify a path (it's derived). Suggested prompts:
+  - Frame: `seamless tileable rough walnut wood plank, prominent grain, matte, 4k`
+  - Drawer: `seamless tileable light oak wood, fine straight grain, satin, 4k`
+  - Handle: `seamless tileable dark walnut wood, smooth, low sheen, 4k`
 
 Coords meters, Z up, -Y is the cabinet's front.

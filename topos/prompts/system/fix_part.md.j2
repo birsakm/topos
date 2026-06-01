@@ -128,14 +128,17 @@ If your `preserve` list has 2+ items, Edit is almost always the right choice —
    files, do NOT touch `src/build.py`, do NOT touch `src/joints.yaml`, do NOT touch
    `src/design.json`. Other parts and the assembly are passing — only this one
    part needs revision.
-4. Preserve the function signatures: `build_{{ part_name|lower }}()` must still
-   exist and return a bpy object named `"{{ part_name }}"`. If a
-   `texture_{{ part_name|lower }}(obj)` exists, keep its signature.
+4. Preserve the function signature: `build_{{ part_name|lower }}()` must still
+   exist and return a bpy object named `"{{ part_name }}"`. Write GEOMETRY ONLY —
+   do NOT add texture / material / shader code (the framework textures the part
+   automatically from design.json); the only material line is
+   `obj.color = tuple(spec["color_rgba"])`.
 5. Map each IMPROVE item to a concrete code change:
    - If `geometry_detail` is low: add bevels / insets / non-primitive shapes
      (read `topos_part_geometry` + `topos_furniture_hardware` SKILLs).
-   - If `material_quality` is low: define / improve `texture_{{ part_name|lower }}(obj)`
-     (read `topos_texture_creator` SKILL — procedural or image-based).
+   - If `material_quality` is low: this is NOT yours to fix in geometry code —
+     material comes from the design agent's `texture.prompt` + the build harness.
+     Improve the SHAPE so the texture reads better; leave materials to the framework.
    - If `recognizable_as_role` is low: rebuild the geometry from a clearer
      pattern (e.g. handle = composite cylinder+stubs, drawer = 5-panel tray).
 6. **For each IMPROVE item you fix, verify the corresponding PRESERVE items still
@@ -149,9 +152,6 @@ If your `preserve` list has 2+ items, Edit is almost always the right choice —
    Keep the bbox contract (5mm tolerance) — bbox failures break downstream assembly.
 
 For Blender API specifics, run `topos bpy-docs search "<query>"` from Bash.
-For image textures: do NOT call any generation CLI yourself — the framework
-dispatches a separate `generate_texture_image` ToolTask per part that reads
-`design.json[parts.<this_part>.texture.prompt]` and writes the PNG to
-`image_relpath`. Your `texture_<name>(obj)` just binds the PNG (and falls
-back to flat color when the file is missing). See the `topos_texture_creator`
-SKILL Pattern 2 for the binding template.
+Texture is fully decoupled from geometry: the framework generates each part's
+material image from `design.json[texture.prompt]` and UV-binds it at assembly
+time. Write geometry only — do not author any texture/material code here.

@@ -117,34 +117,46 @@ For repeated identical features (4 chair legs, 6 fan blades, 12 spokes), DO NOT 
 - Mirror-symmetric pairs (instances doesn't support scale=-1 reliably)
 - Variable details across copies (left side door has a handle, right doesn't → separate parts)
 
-## Material choice — when to emit a `texture` field
+## Material choice — author `texture.prompt` per part
 
-The schema above shows `texture` as **optional**. This section tells you **when to populate it** and what to put in it. The default fallback (no `texture` field) attaches a flat Principled BSDF using `color_rgba` — that's a *deliberate* choice for plain plastic / single-tone paint, and a *failure mode* for anything where the surface itself is part of the visual identity (wood grain, hammered metal, woven cloth, glazed ceramic, …).
+Texture is **fully decoupled** from geometry: you own the entire look here in
+design.json, via one `texture.prompt` per part. Geometry agents write no texture
+code. **Image generation is the DEFAULT** — the framework generates a tileable
+PNG (Gemini Nano Banana) from each `prompt`, UV-unwraps the part, and binds it
+automatically. The spec is just:
 
-Decision table — read each part's `role` description and pick:
+```json
+"texture": { "prompt": "<material surface prompt>", "material_hint": "<optional>" }
+```
 
-| Material described in role / prompt | Use | Why |
-|---|---|---|
-| Wood (any species: oak / walnut / rosewood / pine / bamboo) | **`texture: {kind: image, ...}`** | Grain pattern is non-negotiable for "looks like wood"; flat color reads as "painted MDF". One Gemini call ≈ $0.001. |
-| Metal with surface detail (gilded, cast, hammered, engraved, antiqued brass) | **`texture: {kind: image, ...}`** | Ornate metallic hardware needs micro-detail; flat BSDF reads as "painted plastic". |
-| Brushed metal (single direction), polished mirror chrome, simple anisotropic | `texture: {kind: procedural}` + procedural shader | Regular structure — `ShaderNodeTexNoise` + anisotropic BSDF nails it without an external image. |
-| Fabric, leather, woven straw, carpet, denim, canvas | **`texture: {kind: image, ...}`** | Weave pattern is irreducible to procedural noise. |
-| Stone, marble, granite, concrete, terracotta | **`texture: {kind: image, ...}`** | Veining / aggregate / pitting carries the realism. |
-| Glass, transparent plastic | `color_rgba` only | Transmission + roughness in BSDF is sufficient; no image needed. |
-| Painted single-tone surfaces (lacquer, enamel, gloss paint with no visible grain) | `color_rgba` only | Flat color IS the look. |
-| Simple regular pattern (stripes, dots, even rings) | `texture: {kind: procedural}` | Shader nodes (`ShaderNodeTexWave`, `ShaderNodeTexChecker`) without an image. |
-| Photoreal or "ornate / palace / luxury" descriptions | **`texture: {kind: image, ...}`** | If the human prompt uses words like *photoreal, ornate, antique, palace, luxury, weathered, rustic, embroidered* — that's a strong image-texture signal regardless of material class. |
+There is **no `kind` field, no `image_relpath`, no procedural-shader option, and
+no `texture_<name>()` function** — those are gone. A part is either:
+- **image-textured** — give it a `texture.prompt` (the default for any part whose
+  surface carries visual identity), or
+- **flat** — omit the `texture` block entirely; it renders in `color_rgba`.
 
-**Heuristic shortcut.** Look at the part's `role` field. If you can describe the surface in **3 or fewer words and a number** (`"flat dark grey plastic"`, `"glossy 0.30/0.30/0.30"`), use `color_rgba` only. If the description uses **a material noun + adjectives** (`"rough walnut plank with visible end grain"`, `"polished gilded brass with floral motifs"`), emit an image texture.
+**Give EVERY part a `texture.prompt` unless flat color is genuinely the whole
+look** (plain single-tone plastic / lacquer / enamel, clear glass, a tiny
+internal bracket). When the role names **a material noun + adjectives** (`"rough
+walnut plank with visible end grain"`, `"polished gilded brass"`, `"black rubber
+tyre"`, `"brushed aluminium"`), emit a `texture.prompt`. When you could fully
+describe the surface in **3 words and a color** (`"flat dark grey plastic"`),
+omit `texture` and use `color_rgba` only.
 
-When emitting `texture: {kind: image, ...}`:
-- `prompt` — a *short* Gemini prompt focused on the surface itself. Start with `"seamless tileable"`, name the material, end with `"4k, top-down"`. Example: `"seamless tileable photorealistic dark walnut wood plank, prominent grain, 4k, top-down"`.
-- `image_relpath` — under `src/textures/<part_lower>.png`. The framework's `generate_texture_image` ToolTask (one per part, dispatched after the part agent) will read `prompt` + `image_relpath` from your design.json and materialize the PNG via Gemini Nano Banana 2; the part-geom agent's `texture_<name>(obj)` then binds it.
-- `material_hint` — a one-line cue the part-geom agent uses when wiring the Principled BSDF (roughness / metallic / specular tuning). Examples: `"rough walnut wood, semi-matte"`, `"polished brass, metallic=1.0, roughness=0.15"`.
+For HOW to write an effective `prompt` (seamless-tileable, material vocabulary,
+what to avoid), see the **`topos_texture_creator`** skill. Short version: start
+with `"seamless tileable"`, name the material + finish + fine structure, end
+with `"4k"`; describe the *surface*, never the object or the scene.
 
-**Cost reasoning.** A typical cabinet has 3–7 parts; if 4 of them get image textures, that's ~$0.004 in Gemini calls per run. This is dramatically cheaper than the per-iter agent cost ($0.50–$1.00 per part-agent), so don't be stingy with image textures when the role implies a real material — the visual return is large.
+- `material_hint` (optional) — a one-line cue used only as the flat-color
+  fallback if image-gen is unavailable. Keep it short (`"matte walnut"`).
 
-**Anti-pattern.** Do NOT emit a `texture` block "just to be safe" if `color_rgba` already captures the look (matte single-color paint, plain plastic). The fallback flat-BSDF path is fine and saves a Gemini call. The mistake the decision table fixes is the *opposite* one: omitting `texture` when the role clearly calls for a real material surface.
+**Cost reasoning.** Each `texture.prompt` is one Gemini call (~$0.001, ~60–120s).
+A 20-part object firing 18 image calls is the bulk of the texture phase — worth
+it for furniture-grade looks, but omit `texture` on parts where flat color is
+truly fine (it saves a call and wall-time). The image return dwarfs the per-part
+agent cost ($0.50–$1.00), so don't be stingy when the role implies a real
+material.
 
 ## Rest-pose choice — this is what gets rendered
 
