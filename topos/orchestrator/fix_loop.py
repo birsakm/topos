@@ -208,6 +208,18 @@ def assembly_judge_passed(results: dict[str, TaskResult]) -> bool | None:
     return asm.output.get("passed") is True
 
 
+def assembly_judge_score(results: dict[str, TaskResult]) -> float | None:
+    """The whole-object assembly judge's ``overall_score`` (None if it hasn't
+    run or didn't report a numeric score). Used by the runner's regression
+    early-stop: if a fix iter drops this score, the fix made the deliverable
+    worse and the loop should halt rather than keep degrading it."""
+    asm = assembly_judge_result(results)
+    if asm is None:
+        return None
+    s = asm.output.get("overall_score")
+    return float(s) if isinstance(s, (int, float)) else None
+
+
 def collect_runtime_failures(results: dict[str, TaskResult]) -> list[dict]:
     """Scan all tool task results for runtime ``failed_parts`` records.
 

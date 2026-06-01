@@ -277,6 +277,9 @@ class Runner:
         # max_global_iters is the hard ceiling regardless.
         min_improvement = self.plan.iter_policy.min_improvement
         prev_scores = fix_loop.judge_scores_snapshot(results)
+        # Track the whole-object assembly score across iters for the regression
+        # early-stop (a fix iter that drops it made the deliverable worse).
+        prev_asm = fix_loop.assembly_judge_score(results)
         iteration = 0
         while iteration < max_iter - 1:  # max_global_iters=1 → no fix iters
             if fix_loop.stop_condition_met(results, stop_on):
@@ -344,6 +347,23 @@ class Runner:
             history.append(self._snapshot(results, iteration,
                                           time.monotonic() - iter_start,
                                           self._cost_accumulator - iter_cost_start))
+            # Regression early-stop (highest priority): if this fix iter made the
+            # whole-object ASSEMBLY judge WORSE, halt immediately — don't keep
+            # spending iters (and tokens) degrading the deliverable further. The
+            # assembly judge is the verdict; a per-part judge improving while the
+            # assembly regresses is net-negative (observed on the bicycle:
+            # assembly 0.52 → 0.475 while a part judge nudged up, yet the loop
+            # kept going). ``iter_improved`` below wouldn't catch this because it
+            # counts ANY judge moving up.
+            cur_asm = fix_loop.assembly_judge_score(results)
+            if prev_asm is not None and cur_asm is not None and cur_asm < prev_asm - 1e-9:
+                print(
+                    f"[runner] regression early-stop after iter {iteration}: assembly "
+                    f"judge dropped {prev_asm:.3f} -> {cur_asm:.3f}. Halting fix-loop "
+                    f"(the fix made the whole object worse)."
+                )
+                break
+            prev_asm = cur_asm
             # Cost-saturation early-stop: did anything move enough to justify
             # another iter? Compare each judge's score to the prior iter's.
             cur_scores = fix_loop.judge_scores_snapshot(results)

@@ -170,7 +170,11 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
 
     return {
         "project": project,
-        # 3 global iters: enough budget for per-part fix + assembly fix
-        "iter_policy": {"max_global_iters": 3, "stop_on": "judge_pass"},
+        # max_global_iters = iter 0 + (N-1) fix iters. Set to 2 → at most ONE
+        # fix iter. Combined with the regression early-stop (runner halts if a
+        # fix drops the assembly score) and the assembly-pass stop, this keeps
+        # the fix-loop from burning 40-50k-token part rewrites chasing a
+        # whole-object that isn't converging.
+        "iter_policy": {"max_global_iters": 2, "stop_on": "judge_pass"},
         "tasks": tasks,
     }

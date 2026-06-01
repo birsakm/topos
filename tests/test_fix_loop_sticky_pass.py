@@ -15,6 +15,7 @@ from topos.orchestrator.fix_loop import (
     _PART_JUDGE_RE,
     all_judge_results,
     assembly_judge_passed,
+    assembly_judge_score,
     build_fix_tasks,
     frozen_parts,
     latest_judge_passed,
@@ -186,6 +187,28 @@ def test_build_fix_tasks_still_fixes_parts_when_assembly_fails():
     ids = {t.id for t in build_fix_tasks(results, next_iter=1)}
     assert "99_agent_fix" in ids                    # assembly fix
     assert "99_agent_fix_part_seat" in ids          # per-part fix
+
+
+def test_assembly_judge_score_extracts_whole_object_score():
+    """assembly_judge_score returns the assembly (non-part) judge's
+    overall_score — the value the runner's regression early-stop compares
+    across iters. Per-part judges are ignored."""
+    results = {
+        "08_tool_judge": _judge("08_tool_judge", passed=False, score=0.475),
+        "02_subgraph_parts__01_tool_judge_part_seat":
+            _judge("02_subgraph_parts__01_tool_judge_part_seat", passed=True, score=0.9),
+    }
+    assert assembly_judge_score(results) == 0.475   # the assembly judge, not the part
+
+
+def test_assembly_judge_score_none_when_no_assembly_judge():
+    """Only per-part judges present (e.g. build failed before the assembly
+    judge ran) → None, so the regression check is a no-op rather than a crash."""
+    results = {
+        "02_subgraph_parts__01_tool_judge_part_seat":
+            _judge("02_subgraph_parts__01_tool_judge_part_seat", passed=False, score=0.49),
+    }
+    assert assembly_judge_score(results) is None
 
 
 # ---------- latest_judge_passed semantics ----------
