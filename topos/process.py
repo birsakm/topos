@@ -99,6 +99,8 @@ def run_process_with_watchdog(
     hard_max_s: int = 3600,
     input_text: str | None = None,
     progress_log_interval_s: int = 60,
+    poll_interval_s: float = 2.0,   # how often the watchdog wakes to check
+                                    # activity/timeouts; tests scale it down.
     activity_event_substrings: list[str] | None = None,
     activity_stderr_substrings: list[str] | None = None,
     tool_pending_substrings: tuple[str, str] | None = None,
@@ -349,7 +351,7 @@ def run_process_with_watchdog(
                     )
                 next_progress_log = now + progress_log_interval_s
 
-        time.sleep(2)
+        time.sleep(poll_interval_s)
 
     # Wait for drain threads to finish (process is gone, pipes will EOF).
     t_out.join(timeout=5)

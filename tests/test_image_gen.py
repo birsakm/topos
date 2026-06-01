@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from topos.agents.image_gen.base import ImageGenBackend, ImageGenResult, make_backend
-from topos.agents.image_gen.stub import StubBackend, _make_noise_png
+from topos.agents.image_gen.stub import StubBackend
 from topos.agents.image_gen.gemini import GeminiBackend
 from topos.tools.registry import _ensure_default_tools_imported, get
 
@@ -78,10 +78,21 @@ def test_make_backend_factory_unknown_name():
         make_backend("nope_not_a_backend")
 
 
-def test_make_noise_png_clamps_size():
-    # 256 is the internal clamp
-    big = _make_noise_png(1024)
-    assert big.startswith(b"\x89PNG")
+def test_stub_clamps_image_size():
+    """The stub backend clamps any requested size to <=256px so tests/CI never
+    pay to noise-generate a huge image in pure Python. A 1024 request yields a
+    256x256 PNG. (Tests the real clamp in StubBackend.generate, not the raw
+    _make_noise_png, which is unbounded by design.)"""
+    from topos.agents.image_gen.stub import StubBackend
+    result = StubBackend().generate("x", size=1024)
+    assert result.success
+    png = result.png_bytes
+    assert png.startswith(b"\x89PNG")
+    # IHDR width/height: two big-endian uint32 after the 8-byte signature +
+    # 4-byte length + 4-byte "IHDR" type → bytes [16:24].
+    import struct
+    width, height = struct.unpack(">II", png[16:24])
+    assert (width, height) == (256, 256)
 
 
 # ---------------- Gemini auth + request building ----------------

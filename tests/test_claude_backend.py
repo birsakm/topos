@@ -1,5 +1,8 @@
 """ClaudeCLIBackend smoke test. Spawns one real ``claude -p`` call with no
-tools. Minimal token usage. Skipped if claude CLI not on PATH.
+tools. Minimal token usage. It is an INTEGRATION test (real LLM call, ~4s +
+cost) so it's deselected from the default unit run (`addopts = -m 'not
+integration'`); run it via `pytest -m integration`. Also skipped if the claude
+CLI isn't on PATH.
 """
 
 from __future__ import annotations
@@ -13,10 +16,13 @@ import pytest
 from topos.backends.claude_cli import ClaudeCLIBackend
 
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("claude") is None,
-    reason="claude CLI not on PATH",
-)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        shutil.which("claude") is None,
+        reason="claude CLI not on PATH",
+    ),
+]
 
 
 def test_claude_cli_backend_run_no_tools(tmp_path: Path):

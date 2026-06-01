@@ -22,10 +22,15 @@ def _blender_available() -> bool:
     return Path(binary).is_file()
 
 
-pytestmark = pytest.mark.skipif(
-    not _blender_available(),
-    reason="blender.binary not configured or not present; skip integration test",
-)
+pytestmark = [
+    # Real Blender subprocess → integration (deselected from the default unit
+    # run, which is Blender/LLM-free; run via `pytest -m integration`).
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not _blender_available(),
+        reason="blender.binary not configured or not present",
+    ),
+]
 
 
 def test_run_blender_saves_blend_file(tmp_path: Path):
