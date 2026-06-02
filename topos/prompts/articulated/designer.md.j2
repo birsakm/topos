@@ -52,7 +52,7 @@ If reference image(s) are provided in the workspace (`prompts/references/`), Rea
       // `texture.prompt` unless you deliberately want it left flat (then omit
       // the whole `texture` block and it renders in `color_rgba`).
       "texture": {
-        "prompt": "<image-gen prompt for the material, e.g. 'seamless tileable brushed aluminium, fine linear grain, matte, 4k'>",
+        "prompt": "<material surface, e.g. 'brushed aluminium, fine linear grain, matte, surface filling the whole image edge to edge, top-down, soft even light'. NEVER write 'seamless tileable' or '4k' — that stock-caption phrasing trips Nano Banana's IMAGE_RECITATION guard and returns an empty image. See the topos_texture_creator skill.>",
         "material_hint": "<optional one-line material cue, e.g. 'matte black rubber'>"
       }
     }

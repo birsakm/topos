@@ -43,6 +43,7 @@ class _AgentTaskModel(BaseModel):
     images: list[str] = []               # workspace-relative paths to reference images
     timeout_s: int = 600
     system_prompt_append: str | None = None
+    expected_outputs: list[str] = []     # files the task MUST write; absence ⇒ fail (see AgentTask)
 
 
 class _ToolTaskModel(BaseModel):
@@ -100,6 +101,7 @@ class Plan(BaseModel):
                     images=list(t.images),
                     timeout_s=t.timeout_s,
                     system_prompt_append=t.system_prompt_append,
+                    expected_outputs=list(t.expected_outputs),
                 ))
             elif isinstance(t, _SubgraphTaskModel):
                 out.append(SubgraphTask(

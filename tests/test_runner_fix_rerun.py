@@ -62,6 +62,30 @@ def test_fix_loop_emits_tasks_with_is_fix_rerun_set():
         )
 
 
+def test_assembly_build_fix_inherits_build_timeout_floor_600():
+    """The assembly fix reuses the build agent's id AND its timeout — with a
+    600s floor. 300s idle-killed gemini assembly fixes mid-work
+    (bike_gemini4 iter1, 2026-06-02), even though the iter0 build had 600s."""
+    from topos.orchestrator.fix_loop import build_fix_tasks
+    from topos.orchestrator.results import TaskResult
+
+    results = {
+        "08_tool_judge": TaskResult(
+            id="08_tool_judge", kind="tool", success=True, duration_s=1.0,
+            output={"passed": False, "overall_score": 0.4,
+                    "per_criterion": {"recognizable_as_role": {"score": 0.4, "feedback": "off"}},
+                    "suggested_fixes": ["tighten the frame"]},
+        ),
+    }
+    build = AgentTask(id="03_agent_build", goal="assemble",
+                      deps=["02_subgraph_parts"], timeout_s=600)
+    fix_tasks = build_fix_tasks(results, next_iter=1, original_tasks=[build])
+    assembly_fix = next(t for t in fix_tasks if t.id == "03_agent_build")
+    assert assembly_fix.timeout_s >= 600, (
+        f"assembly fix timeout {assembly_fix.timeout_s} must be ≥600s; 300 idle-kills gemini"
+    )
+
+
 # --- The race-condition fix: fix_rerun MUST invalidate the prior result ----
 
 

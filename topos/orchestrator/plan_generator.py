@@ -67,6 +67,10 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
         # reasoning turn) can run past 5 min; the partial-message watchdog keeps
         # it alive as long as it's actually streaming, but give real headroom.
         "timeout_s": 600,
+        # design.json gates the whole run (the subgraph expands from it). A
+        # no-op design turn that "succeeds" without writing it used to crash
+        # expansion; declaring it here makes the runner retry-once then fail loud.
+        "expected_outputs": ["src/design.json"],
     })
 
     # 02_subgraph_parts — at runtime expands into per-part agent / texture /
@@ -92,7 +96,10 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
         "goal_file": "topos:articulated/builder.md",
         "skills": _SKILL_BY_TASK["build"],
         "allowed_tools": ["Read", "Edit", "Write", "Glob", "Bash"],
-        "timeout_s": 300,
+        # build composes every part and is the heaviest agent step; 5 min was
+        # too tight (observed gemini builds idle-killed at the soft deadline).
+        "timeout_s": 600,
+        "expected_outputs": ["src/build.py"],
     })
 
     # 04_agent_joints — joints.yaml is derived from design.json; only needs
@@ -106,6 +113,7 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
         "skills": _SKILL_BY_TASK["joints"],
         "allowed_tools": ["Read", "Edit", "Write", "Glob", "Bash"],
         "timeout_s": 180,
+        "expected_outputs": ["src/joints.yaml"],
     })
 
     # Assembly tool tasks

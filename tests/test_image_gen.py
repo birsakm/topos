@@ -259,6 +259,44 @@ def test_gemini_empty_response_exhausts_retries_then_fails_cleanly():
     assert result.cost_usd == 0.0
 
 
+_RECITATION_RESPONSE = json.dumps({
+    "candidates": [{"finishReason": "IMAGE_RECITATION", "content": {"parts": []}}]
+}).encode()
+
+
+def test_extract_png_raises_terminal_on_recitation():
+    """A no-image 200 whose finishReason is a deterministic refusal must raise
+    the terminal variant (not plain RuntimeError) so generate() fails fast."""
+    from topos.agents.image_gen.gemini import _TerminalImageGenError
+    backend = GeminiBackend(api_key="fake")
+    with pytest.raises(_TerminalImageGenError, match="IMAGE_RECITATION"):
+        backend._extract_png(json.loads(_RECITATION_RESPONSE))
+
+
+def test_gemini_recitation_fails_fast_without_retry():
+    """IMAGE_RECITATION is deterministic — retrying the identical prompt always
+    re-fails. The backend must NOT burn its retry budget on it: urlopen is
+    called exactly ONCE and the result is a clean failure (degrade-to-flat
+    happens one layer up). This is the wasted-retry bug the fix closes."""
+    backend = GeminiBackend(api_key="fake", retry_base_wait_s=0.01, max_retries=2)
+    with patch("urllib.request.urlopen", return_value=_mock_resp(_RECITATION_RESPONSE)) as m:
+        result = backend.generate("seamless tileable black leather, fine pebbled grain, 4k")
+    assert result.success is False
+    assert m.call_count == 1, "recitation must not be retried"
+    assert "refused" in (result.error or "").lower()
+
+
+def test_gemini_empty_still_retries_not_misclassified_as_terminal():
+    """Guard against over-broad classification: a genuinely empty 200 (no
+    finishReason) stays transient and is retried."""
+    backend = GeminiBackend(api_key="fake", retry_base_wait_s=0.01)
+    fake_png = b"\x89PNG" + b"\x00" * 50
+    with patch("urllib.request.urlopen",
+               side_effect=[_mock_resp(_EMPTY_RESPONSE), _mock_resp(_png_response(fake_png))]):
+        result = backend.generate("a red ball")
+    assert result.success is True
+
+
 # ---------------- generate_texture_image tool ----------------
 #
 # Tool was refactored 2026-05-14: input is now (workspace, part_name) — the
@@ -567,3 +605,16 @@ def test_plan_generator_validates_through_plan_schema():
     assert positions["02_subgraph_parts"] < positions["03_agent_build"]
     assert positions["03_agent_build"] < positions["05_tool_render_multiview"]
     assert positions["05_tool_render_multiview"] < positions["08_tool_judge"]
+
+
+def test_plan_generator_sets_expected_outputs_and_build_timeout():
+    """The no-op guard relies on design/build/joints declaring expected_outputs,
+    and build's soft timeout was bumped 300→600s (gemini builds idle-killed at
+    the old deadline)."""
+    from topos.orchestrator.plan_generator import generate_plan_articulated
+    plan = generate_plan_articulated("t", "a test articulated object")
+    by_id = {t["id"]: t for t in plan["tasks"]}
+    assert by_id["01_agent_design"]["expected_outputs"] == ["src/design.json"]
+    assert by_id["03_agent_build"]["expected_outputs"] == ["src/build.py"]
+    assert by_id["04_agent_joints"]["expected_outputs"] == ["src/joints.yaml"]
+    assert by_id["03_agent_build"]["timeout_s"] == 600

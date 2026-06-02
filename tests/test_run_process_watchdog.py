@@ -325,3 +325,51 @@ def test_no_done_substring_means_truly_stuck(tmp_path: Path):
     )
     assert r.timed_out is True
     assert "no terminal-result event seen" in r.stderr
+
+
+def test_done_event_reaped_quickly_when_hung(tmp_path: Path):
+    """Once the agent emits its terminal-result event, a process that then
+    lingers silently is reaped after the short ``done_grace_s`` — NOT after the
+    full soft_timeout + idle_grace. Models gemini-cli finishing the work then
+    hanging on teardown (the 'done-but-hung' case)."""
+    # Emit the done marker immediately, then sleep 5s. soft_timeout is large
+    # (5s) so the ordinary idle-kill path can't fire early — only the
+    # done-event reap (done_grace=0.2s) explains an early kill.
+    script = _write_script(
+        tmp_path, "done_then_hang.sh",
+        "#!/bin/bash\n"
+        "echo '{\"type\":\"result\"}'\n"
+        "sleep 5\n",
+    )
+    r = run_process_with_watchdog(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        soft_timeout_s=5,
+        idle_grace_s=5,
+        hard_max_s=10,
+        done_grace_s=0.2,
+        done_event_substring='"type":"result"',
+        poll_interval_s=POLL,
+    )
+    assert r.timed_out is True
+    assert r.duration_s < 2, "should reap shortly after done marker, not wait soft+idle"
+    assert "terminal-result event seen but process idle" in r.stderr
+
+
+def test_done_reap_does_not_fire_without_terminal_event(tmp_path: Path):
+    """No terminal-result event ⇒ the done-reap must NOT fire. A silent process
+    stays governed by soft_timeout + idle_grace (here the hard ceiling stops it
+    first), proving the reap is gated on the done event, not on plain idleness."""
+    script = _write_script(tmp_path, "silent.sh", "#!/bin/bash\nsleep 5\n")
+    r = run_process_with_watchdog(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        soft_timeout_s=5,        # large → ordinary idle-kill can't fire early
+        idle_grace_s=5,
+        hard_max_s=0.4,          # only the hard ceiling should stop it
+        done_grace_s=0.2,
+        done_event_substring='"type":"result"',
+        poll_interval_s=POLL,
+    )
+    assert r.timed_out is True
+    assert "hard_max_s" in r.stderr  # NOT the done-reap, NOT idle-grace

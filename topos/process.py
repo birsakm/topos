@@ -97,6 +97,7 @@ def run_process_with_watchdog(
     soft_timeout_s: int,
     idle_grace_s: int = 300,
     hard_max_s: int = 3600,
+    done_grace_s: int = 20,
     input_text: str | None = None,
     progress_log_interval_s: int = 60,
     poll_interval_s: float = 2.0,   # how often the watchdog wakes to check
@@ -118,6 +119,12 @@ def run_process_with_watchdog(
        kill. The process is considered "active" if stdout/stderr byte
        count grew since the last check (or, when ``activity_event_substrings``
        is set, the count of those substrings in stdout grew — see below).
+    4. ``done_event_substring`` seen AND idle for ``done_grace_s`` (default
+       20s) → kill, *independent of* ``soft_timeout_s``. The agent already
+       reported its terminal result; the process is just hung on teardown
+       (gemini-cli does this routinely — finishes the work, then the node
+       process lingers). No point waiting the full soft+idle_grace window
+       for an agent that's already told us it's done.
 
     Activity signal modes:
 
@@ -263,6 +270,8 @@ def run_process_with_watchdog(
         return sum(buf.count(s) for s in _stderr_signals_b)
 
     last_stderr_signal_count = 0
+    _done_event_b = done_event_substring.encode("utf-8") if done_event_substring else None
+    done_seen = False
 
     _tool_open_b = (
         tool_pending_substrings[0].encode("utf-8")
@@ -321,6 +330,24 @@ def run_process_with_watchdog(
             last_activity = now
             last_stream_bytes = cur_bytes
             last_event_count = cur_event_count
+
+        # 4. Done-but-hung reap (independent of soft_timeout). Once the agent
+        # has emitted its terminal-result event, it's finished; a still-living
+        # process that's been idle for done_grace_s is hung on teardown, not
+        # working. Reap it instead of waiting out the full soft+idle window.
+        if _done_event_b is not None and not done_seen:
+            if _done_event_b in b"".join(stdout_chunks):
+                done_seen = True
+        if done_seen and not _blocked_on_tool(b"".join(stdout_chunks)):
+            idle_for = now - last_activity
+            if idle_for > done_grace_s:
+                kill_reason = (
+                    f"terminal-result event seen but process idle {idle_for:.0f}s "
+                    f"(done_grace_s={done_grace_s}s) — reaping finished-but-hung agent"
+                )
+                timed_out = True
+                _kill_proc_tree()
+                break
 
         if elapsed > soft_timeout_s:
             idle_for = now - last_activity

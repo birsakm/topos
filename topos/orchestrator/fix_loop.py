@@ -367,7 +367,10 @@ def build_fix_tasks(
                     allowed_tools=list(build_origin.allowed_tools)
                                   or ["Read", "Edit", "Write", "Glob", "Bash"],
                     deps=list(build_origin.deps),
-                    timeout_s=300,
+                    # Inherit the build agent's soft timeout (600s) with a 600s
+                    # floor. 300s idle-killed gemini assembly fixes mid-work
+                    # (bike_gemini4 iter1, 2026-06-02); match build_runtime_fix.
+                    timeout_s=max(build_origin.timeout_s, 600),
                     is_fix_rerun=True,
                 ))
             else:
@@ -377,7 +380,7 @@ def build_fix_tasks(
                     backend=_default_fix_backend(original_tasks),
                     allowed_tools=["Read", "Edit", "Glob"],
                     deps=[],
-                    timeout_s=300,
+                    timeout_s=600,
                     is_fix_rerun=True,
                 ))
     return fix_tasks

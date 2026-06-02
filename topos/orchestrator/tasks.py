@@ -29,6 +29,13 @@ class AgentTask:
     timeout_s: int = 600
     images: list[str] = field(default_factory=list)  # workspace-relative image paths for reference
     system_prompt_append: str | None = None
+    # Workspace-relative files this task MUST produce to count as successful.
+    # A CLI can report success while doing nothing — gemini-cli intermittently
+    # ends a turn with no tool calls (a "no-op turn"); without this guard a
+    # no-op design agent reports success and the run later CRASHES at subgraph
+    # expansion when src/design.json is absent. When declared, the runner
+    # validates presence post-run (retry-once, then fail loud). Empty = no check.
+    expected_outputs: list[str] = field(default_factory=list)
     kind: Literal["agent"] = "agent"
     # When True, signals to the runner: this AgentTask is a fix-loop re-run
     # that REUSES the original task's ID (so downstream DAG deps auto-resolve

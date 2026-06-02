@@ -25,6 +25,10 @@ PRICING: dict[str, dict[str, float]] = {
     "gemini-2.5-pro":                {"input": 1.25, "output": 10.00, "cached_input": 0.125},
     "gemini-2.5-flash":              {"input": 0.30, "output":  2.50, "cached_input": 0.075},
     "gemini-3-flash-preview":        {"input": 0.50, "output":  3.00, "cached_input": 0.05},
+    # gemini-3.5-flash (global region). Verified 2026-06-02 against Google's
+    # published pricing ($1.50/$9.00 per 1M, cached $0.15). Non-global regions
+    # are $1.65/$9.90 — use the global rate as the canonical estimate.
+    "gemini-3.5-flash":              {"input": 1.50, "output":  9.00, "cached_input": 0.15},
     "gemini-3-pro-preview":          {"input": 2.00, "output": 12.00, "cached_input": 0.20},
     "gemini-3.1-pro-preview":        {"input": 2.00, "output": 12.00, "cached_input": 0.20},
     "gemini-3.1-flash-lite-preview": {"input": 0.25, "output":  1.50, "cached_input": 0.025},

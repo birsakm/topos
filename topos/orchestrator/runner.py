@@ -88,6 +88,24 @@ def _real_work_products(files_modified: list[Path], workspace_root: Path) -> lis
     return out
 
 
+def _missing_expected_outputs(expected: list[str], workspace_root: Path) -> list[str]:
+    """Return the declared workspace-relative outputs that are absent or empty.
+
+    Backs ``_run_agent``'s no-op guard: a CLI can report success having written
+    nothing. Empty ``expected`` ⇒ ``[]`` (no check). A path that exists but is a
+    zero-byte file counts as missing — a truncated/empty write is not a result.
+    """
+    missing: list[str] = []
+    for rel in expected:
+        p = workspace_root / rel
+        try:
+            if (not p.exists()) or (p.is_file() and p.stat().st_size == 0):
+                missing.append(rel)
+        except OSError:
+            missing.append(rel)
+    return missing
+
+
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
 
@@ -925,53 +943,87 @@ class Runner:
         if task.system_prompt_append:
             sys_append = sys_append + "\n\nAdditional rules for this task:\n" + task.system_prompt_append
 
+        # No-op guard: a CLI can report success while doing nothing (gemini-cli
+        # intermittently ends a turn with no tool calls). When the task declares
+        # expected_outputs, we retry once if they're absent after a "successful"
+        # run — the flake rarely repeats. duration_s spans all attempts (real
+        # wall cost). max_noop_retries=0 when nothing is declared, so unguarded
+        # tasks behave exactly as before.
         start = time.monotonic()
-        result = backend.run(
-            prompt=prompt,
-            workspace=self.ws.root,
-            allowed_tools=task.allowed_tools,
-            mcp_servers=[],
-            timeout_s=task.timeout_s,
-            trajectory_dir=trajectory,
-            system_prompt_append=sys_append,
-        )
+        max_noop_retries = 1 if task.expected_outputs else 0
+        attempt = 0
+        while True:
+            result = backend.run(
+                prompt=prompt,
+                workspace=self.ws.root,
+                allowed_tools=task.allowed_tools,
+                mcp_servers=[],
+                timeout_s=task.timeout_s,
+                trajectory_dir=trajectory,
+                system_prompt_append=sys_append,
+            )
+
+            # Work-product override: when the CLI envelope flags failure but
+            # the agent actually wrote real source files, trust the disk over
+            # the envelope. Observed 2026-05-13 on cab_gemini_pro_palace5_v2:
+            # gemini-3.x preview occasionally emits a totally empty final-turn
+            # response after all real work is done (4 KB part .py already
+            # written via write_file tool). CLI labels that "Invalid stream",
+            # topos's classify_exit picks up the (recovered) 429 in stderr as
+            # well, returns exit_reason="quota", marks success=False, and the
+            # one failed agent cascade-skips every downstream task — losing
+            # ALL artifacts even though the work was complete on disk.
+            #
+            # The override is safe: src/ files are validated downstream by
+            # verify_parts (Blender import test) and per-part judges, so a
+            # stub/partial file still fails the run at the right gate. We
+            # just stop letting the CLI's "I'm done" signal be the sole
+            # arbiter of agent success.
+            final_success = result.success
+            override_note: str | None = None
+            if not result.success:
+                real_outputs = _real_work_products(result.files_modified, self.ws.root)
+                if real_outputs:
+                    final_success = True
+                    override_note = (
+                        f"file-presence override: {len(real_outputs)} real src/ "
+                        f"file(s) written despite exit_reason={result.exit_reason}; "
+                        f"trusting disk artifacts over CLI envelope. Downstream "
+                        f"verify_parts/judges will validate work product."
+                    )
+                    print(f"[runner] {task.id}: {override_note}")
+
+            missing = _missing_expected_outputs(task.expected_outputs, self.ws.root)
+            if final_success and missing and attempt < max_noop_retries:
+                attempt += 1
+                print(
+                    f"[runner] {task.id}: reported success but expected output(s) "
+                    f"{missing} absent (likely a no-op turn) — retrying "
+                    f"({attempt}/{max_noop_retries})."
+                )
+                continue
+            break
         duration_s = time.monotonic() - start
 
-        # Work-product override: when the CLI envelope flags failure but
-        # the agent actually wrote real source files, trust the disk over
-        # the envelope. Observed 2026-05-13 on cab_gemini_pro_palace5_v2:
-        # gemini-3.x preview occasionally emits a totally empty final-turn
-        # response after all real work is done (4 KB part .py already
-        # written via write_file tool). CLI labels that "Invalid stream",
-        # topos's classify_exit picks up the (recovered) 429 in stderr as
-        # well, returns exit_reason="quota", marks success=False, and the
-        # one failed agent cascade-skips every downstream task — losing
-        # ALL artifacts even though the work was complete on disk.
-        #
-        # The override is safe: src/ files are validated downstream by
-        # verify_parts (Blender import test) and per-part judges, so a
-        # stub/partial file still fails the run at the right gate. We
-        # just stop letting the CLI's "I'm done" signal be the sole
-        # arbiter of agent success.
-        final_success = result.success
-        override_note: str | None = None
-        if not result.success:
-            real_outputs = _real_work_products(result.files_modified, self.ws.root)
-            if real_outputs:
-                final_success = True
-                override_note = (
-                    f"file-presence override: {len(real_outputs)} real src/ "
-                    f"file(s) written despite exit_reason={result.exit_reason}; "
-                    f"trusting disk artifacts over CLI envelope. Downstream "
-                    f"verify_parts/judges will validate work product."
-                )
-                print(f"[runner] {task.id}: {override_note}")
+        # Final verdict: declared outputs missing ⇒ failure, regardless of what
+        # the envelope said. Turns a silent no-op (which used to crash at
+        # subgraph expansion) into a loud, attributable task failure.
+        noop_note: str | None = None
+        if final_success and missing:
+            final_success = False
+            noop_note = (
+                f"expected output(s) missing after {attempt + 1} attempt(s): "
+                f"{missing} — agent reported success but wrote nothing (no-op turn)."
+            )
+            print(f"[runner] {task.id}: {noop_note}")
 
         (trajectory / "result.json").write_text(json.dumps({
             "success": final_success,
             "raw_envelope_success": result.success,    # ← keep the raw signal for postmortem
             "exit_reason": result.exit_reason,
             "override_note": override_note,
+            "noop_note": noop_note,
+            "noop_retries": attempt,
             "files_modified": [
                 str(p.relative_to(self.ws.root)) if p.is_relative_to(self.ws.root) else str(p)
                 for p in result.files_modified
@@ -983,6 +1035,8 @@ class Runner:
         }, indent=2), encoding="utf-8")
         if final_success:
             note = None
+        elif noop_note is not None:
+            note = noop_note
         elif override_note is None:
             note = f"agent exit_reason={result.exit_reason}"
         else:

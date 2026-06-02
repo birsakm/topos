@@ -16,7 +16,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from topos.orchestrator.runner import _real_work_products
+from topos.backends.base import AgentRunResult
+from topos.orchestrator.plan_schema import Plan
+from topos.orchestrator.runner import _missing_expected_outputs, _real_work_products, Runner
+from topos.orchestrator.tasks import AgentTask
+from topos.workspace import Workspace
 
 
 def _touch(p: Path, content: str = "x") -> Path:
@@ -90,3 +94,101 @@ def test_textures_count_as_work(tmp_path: Path):
     tex = _touch(tmp_path / "src" / "textures" / "frame.png", "PNG\x89")
     out = _real_work_products([tex], tmp_path)
     assert out == [tex]
+
+
+# ---------------- no-op guard: expected_outputs validation ----------------
+#
+# The complement of the file-presence override. gemini-cli intermittently
+# ends a turn reporting success while doing nothing (no Write tool call). A
+# no-op design agent that "succeeds" without writing src/design.json used to
+# crash the run at subgraph expansion. expected_outputs makes the runner
+# retry-once then fail loud.
+
+def test_missing_expected_outputs_when_absent(tmp_path: Path):
+    assert _missing_expected_outputs(["src/design.json"], tmp_path) == ["src/design.json"]
+
+
+def test_missing_expected_outputs_when_present(tmp_path: Path):
+    _touch(tmp_path / "src" / "design.json", "{}\n")
+    assert _missing_expected_outputs(["src/design.json"], tmp_path) == []
+
+
+def test_missing_expected_outputs_empty_file_counts_as_missing(tmp_path: Path):
+    """A zero-byte write is not a result — a truncated/empty design.json
+    would still crash expansion downstream."""
+    _touch(tmp_path / "src" / "design.json", "")
+    assert _missing_expected_outputs(["src/design.json"], tmp_path) == ["src/design.json"]
+
+
+def test_no_expected_outputs_never_missing(tmp_path: Path):
+    assert _missing_expected_outputs([], tmp_path) == []
+
+
+class _NoOpBackend:
+    """Reports success but writes nothing unless told to on a given attempt —
+    models gemini-cli's intermittent no-op turn."""
+
+    def __init__(self, write_on_attempt: int | None = None):
+        self.calls = 0
+        self.write_on_attempt = write_on_attempt
+
+    def run(self, *, prompt, workspace, allowed_tools, mcp_servers, timeout_s,
+            trajectory_dir, system_prompt_append):
+        self.calls += 1
+        if self.write_on_attempt is not None and self.calls >= self.write_on_attempt:
+            (workspace / "src").mkdir(parents=True, exist_ok=True)
+            (workspace / "src" / "design.json").write_text("{}\n")
+        return AgentRunResult(
+            success=True, files_modified=[], stdout="", stderr="",
+            transcript_path=trajectory_dir / "transcript.json",
+            exit_reason="completed",
+        )
+
+
+def _runner_with_backend(tmp_path: Path, backend) -> Runner:
+    ws = Workspace.create("p", "articulated", base=tmp_path)
+    r = Runner.__new__(Runner)
+    r.ws = ws
+    r.plan = Plan(project="p", tasks=[])
+    r.backends = {"claude": backend}
+    r.resume = False
+    r._cost_accumulator = 0.0
+    return r
+
+
+def test_noop_agent_failed_after_one_retry(tmp_path: Path):
+    """Envelope says success but the declared output never appears → retry
+    exactly once, then mark the task failed (loud) rather than letting a
+    silent no-op propagate and crash expansion."""
+    be = _NoOpBackend(write_on_attempt=None)  # never writes
+    runner = _runner_with_backend(tmp_path, be)
+    task = AgentTask(id="01_agent_design", goal="design it",
+                     expected_outputs=["src/design.json"])
+    res = runner._run_agent(task, iteration=0)
+    assert be.calls == 2, "should retry exactly once on a no-op turn"
+    assert res.success is False
+    assert "no-op" in (res.note or "").lower()
+
+
+def test_noop_guard_recovers_when_retry_writes(tmp_path: Path):
+    """The retry is the whole point: if the second attempt writes the file,
+    the task succeeds and the run continues — a transient no-op shouldn't
+    fail the run outright."""
+    be = _NoOpBackend(write_on_attempt=2)
+    runner = _runner_with_backend(tmp_path, be)
+    task = AgentTask(id="01_agent_design", goal="design it",
+                     expected_outputs=["src/design.json"])
+    res = runner._run_agent(task, iteration=0)
+    assert be.calls == 2
+    assert res.success is True
+
+
+def test_no_expected_outputs_means_no_retry(tmp_path: Path):
+    """Tasks that don't declare expected_outputs keep the prior single-call
+    behavior — envelope success is honored, no extra attempt."""
+    be = _NoOpBackend(write_on_attempt=None)
+    runner = _runner_with_backend(tmp_path, be)
+    task = AgentTask(id="x_agent", goal="do something")
+    res = runner._run_agent(task, iteration=0)
+    assert be.calls == 1
+    assert res.success is True

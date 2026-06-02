@@ -27,6 +27,27 @@ from .base import ImageGenResult
 
 _ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
+# finishReasons that are DETERMINISTIC refusals — the model returns HTTP 200
+# with an empty candidate (no image, no text) and will do so every time for
+# the same prompt. Retrying is pure wasted latency (observed: IMAGE_RECITATION
+# on stock-texture-caption prompts like "seamless tileable … 4k" burned the
+# full retry budget, ~30–240s, before falling back to flat). Classified as
+# terminal so the caller fails fast instead of retrying.
+_TERMINAL_FINISH_REASONS = frozenset({
+    "IMAGE_RECITATION", "RECITATION", "SAFETY", "IMAGE_SAFETY",
+    "PROHIBITED_CONTENT", "IMAGE_PROHIBITED_CONTENT", "BLOCKLIST", "SPII",
+})
+
+
+class _TerminalImageGenError(RuntimeError):
+    """No-image response whose ``finishReason`` is a deterministic refusal —
+    retrying the identical prompt cannot succeed. Carries the reason so the
+    caller's error message names it."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(f"deterministic refusal (finishReason={reason}); retry would also fail")
+
 
 @dataclass
 class GeminiBackend:
@@ -87,14 +108,21 @@ class GeminiBackend:
                 inline = part.get("inline_data") or part.get("inlineData")
                 if inline and inline.get("data"):
                     return base64.b64decode(inline["data"])
-        # No image — surface what text the model returned, for debugging
+        # No image. If any candidate's finishReason is a deterministic refusal
+        # (recitation / safety guard), raise the terminal variant so the caller
+        # fails fast — retrying the same prompt cannot succeed.
+        finish_reasons = [c.get("finishReason") for c in candidates]
+        for fr in finish_reasons:
+            if fr in _TERMINAL_FINISH_REASONS:
+                raise _TerminalImageGenError(fr)
+        # Otherwise it's an empty/text-only/malformed 200 — transient, retryable.
         text_parts: list[str] = []
         for cand in candidates:
             for part in (cand.get("content") or {}).get("parts") or []:
                 if isinstance(part.get("text"), str):
                     text_parts.append(part["text"])
         raise RuntimeError(
-            f"Gemini response contained no image data. "
+            f"Gemini response contained no image data (finishReason={finish_reasons}). "
             f"Text parts: {text_parts[:1]!r}. Raw keys: {list(response_json)}"
         )
 
@@ -179,6 +207,14 @@ class GeminiBackend:
                         duration_s=time.monotonic() - start_overall,
                         error=last_error,
                     )
+            except _TerminalImageGenError as e:
+                # Deterministic refusal (recitation/safety) — retrying the same
+                # prompt cannot succeed. Fail fast; the caller degrades to flat.
+                return ImageGenResult(
+                    success=False, png_bytes=b"", model=self.model,
+                    duration_s=time.monotonic() - start_overall,
+                    error=f"image-gen refused: {e}",
+                )
             except (json.JSONDecodeError, RuntimeError) as e:
                 # Empty / no-image / unparseable 200 — transient, retry like a 5xx.
                 last_error = f"response parse failed: {e}"

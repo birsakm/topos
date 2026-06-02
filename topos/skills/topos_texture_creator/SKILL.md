@@ -25,7 +25,7 @@ unless you deliberately want it flat.
 
 ```json
 "texture": {
-  "prompt": "seamless tileable brushed aluminium, fine horizontal grain, matte, 4k",
+  "prompt": "brushed aluminium surface, fine horizontal grain, filling the whole image edge to edge, top-down, soft even light, matte",
   "material_hint": "matte aluminium"            // optional, one line
 }
 ```
@@ -39,30 +39,50 @@ unless you deliberately want it flat.
 
 ## Writing a good `prompt` — the rules that matter
 
-Nano Banana renders a **flat, tiling material swatch** that gets wrapped onto
-the part. So describe a *surface*, seamlessly, with material vocabulary:
+Nano Banana renders a **flat material surface** that gets wrapped onto the part.
+Describe a *surface*, full-frame, with material vocabulary — but phrase it as a
+real surface filling the frame, **not** as a stock-texture catalog entry (see
+the recitation warning below).
 
-- **Lead with "seamless tileable"** — the PNG repeats across UVs; without this
-  you get visible seams.
-- **Name the material + finish + fine structure**: `"seamless tileable
-  walnut wood plank, straight grain, satin finish, 4k"`, `"seamless tileable
-  knurled steel, fine diamond pattern, brushed, matte"`, `"seamless tileable
-  black vulcanized rubber tyre tread, fine sipes"`.
+- **End the prompt with the framing clause `surface, filling the whole image
+  edge to edge, top-down, soft even light`.** "Filling the whole image edge to
+  edge" gives a full-bleed PNG (no seams, no swatch-on-a-background); "top-down,
+  soft even light" keeps lighting flat so no highlights/reflections bake into the
+  texture.
+- **Name the material + finish + fine structure** up front: `"walnut wood plank,
+  straight grain, satin finish"`, `"knurled steel, fine diamond pattern,
+  brushed"`, `"black vulcanized rubber tyre tread, fine sipes"`.
 - **State the surface qualities** you want the shader to read: matte / satin /
   glossy, rough / smooth, brushed / polished / cast.
-- **End with `4k`** (or `high detail`) for crisp grain.
-- **Do NOT** put scene words in the prompt: no lighting, no camera, no
-  background, no "a photo of a …", no whole-object words. You want the
-  *material*, flat and repeatable — not a product shot.
+- **Do NOT** name the object or scene: set the wheel's *rubber*, not "a wheel";
+  no background, no whole-object words.
+
+### ⚠️ Avoid IMAGE_RECITATION (empty image, deterministic)
+
+Nano Banana's copyright/recitation guard returns an **empty image** (HTTP 200,
+`finishReason: IMAGE_RECITATION`) when a prompt reads like the caption of a
+scraped stock-texture image — and it's **deterministic**, so the framework's
+retries can't save it; the part falls back to flat. The trigger is the
+*phrasing*, not the material. Verified offenders — **never use these tokens**:
+
+- `seamless tileable` and `4k` / `8k` / `high detail` (classic stock-site caption) —
+  this combo alone blocks innocuous materials like leather and anodized aluminium.
+- `extreme macro close-up`, `swatch` (also gives a swatch-on-background, not full-bleed).
+- `sandblasted` (an independent trigger even when photo-framed — say `fine
+  even matte speckle` instead).
+
+The framing clause above (`… surface, filling the whole image edge to edge,
+top-down, soft even light`) is the tested phrasing that passes — it reads as a
+photo of a real surface, not a catalog tile. Verified 2026-06-01.
 
 ### Good vs bad
 
-| Part | ✅ good prompt | ❌ bad prompt |
+| Part | ✅ good prompt | ❌ bad prompt (recites or off-target) |
 |---|---|---|
-| Bike frame | `seamless tileable glossy teal powder-coated metal, smooth, subtle clearcoat, 4k` | `a teal bicycle frame` |
-| Tyre | `seamless tileable black rubber tyre tread, fine sipes, matte, 4k` | `a round black wheel on a road` |
-| Saddle | `seamless tileable black leather, fine pebbled grain, low sheen, 4k` | `bicycle seat, studio lighting` |
-| Wood drawer | `seamless tileable walnut veneer, straight grain, satin, 4k` | `brown wood` |
+| Bike frame | `glossy teal powder-coated metal, smooth, subtle clearcoat, surface filling the whole image edge to edge, top-down, soft even light` | `seamless tileable glossy teal powder-coated metal, 4k` |
+| Tyre | `black rubber tyre tread, fine sipes, matte, surface filling the whole image edge to edge, top-down, soft even light` | `a round black wheel on a road` |
+| Saddle | `black leather, subtle pebbled grain, low sheen, surface filling the whole image edge to edge, top-down, soft even light` | `seamless tileable black leather, fine pebbled grain, 4k` |
+| Wood drawer | `walnut veneer, straight grain, satin, surface filling the whole image edge to edge, top-down, soft even light` | `seamless tileable walnut veneer, 4k` |
 
 ## Practical tips
 

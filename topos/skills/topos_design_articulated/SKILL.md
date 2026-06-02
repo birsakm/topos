@@ -143,10 +143,13 @@ tyre"`, `"brushed aluminium"`), emit a `texture.prompt`. When you could fully
 describe the surface in **3 words and a color** (`"flat dark grey plastic"`),
 omit `texture` and use `color_rgba` only.
 
-For HOW to write an effective `prompt` (seamless-tileable, material vocabulary,
-what to avoid), see the **`topos_texture_creator`** skill. Short version: start
-with `"seamless tileable"`, name the material + finish + fine structure, end
-with `"4k"`; describe the *surface*, never the object or the scene.
+For HOW to write an effective `prompt` (material vocabulary, full-bleed framing,
+what to avoid), see the **`topos_texture_creator`** skill. Short version: name
+the material + finish + fine structure, then end with the framing clause
+`surface, filling the whole image edge to edge, top-down, soft even light`;
+describe the *surface*, never the object or scene. **Never** use `seamless
+tileable` / `4k` — that stock-caption phrasing deterministically trips Nano
+Banana's IMAGE_RECITATION guard (empty image → flat fallback).
 
 - `material_hint` (optional) — a one-line cue used only as the flat-color
   fallback if image-gen is unavailable. Keep it short (`"matte walnut"`).
