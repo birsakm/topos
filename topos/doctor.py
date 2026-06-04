@@ -84,7 +84,33 @@ def _expand_home_blender_candidates() -> list[Path]:
     return found
 
 
+def _vendored_blender_candidates() -> list[Path]:
+    """Project-vendored Blender — preferred when present so a self-contained
+    checkout pins its own Blender version. Probed under the repo root (parent
+    of the ``topos`` package). Covers the plain ``./vendor/blender/blender`` /
+    ``./blender/blender`` layouts plus a versioned-extract directory
+    (e.g. ``./vendor/blender-5.0-linux-x64/blender``)."""
+    repo_root = Path(__file__).resolve().parents[1]
+    found: list[Path] = []
+    for fixed in (
+        repo_root / "vendor" / "blender" / "blender",
+        repo_root / "blender" / "blender",
+    ):
+        if fixed.is_file():
+            found.append(fixed)
+    for parent in (repo_root / "vendor", repo_root):
+        for child in sorted(parent.glob("blender-*")):
+            candidate = child / "blender"
+            if candidate.is_file():
+                found.append(candidate)
+    return found
+
+
 def discover_blender() -> Path | None:
+    # Project-vendored Blender wins: a self-contained checkout should use its
+    # own pinned binary even when a system Blender is also on PATH.
+    for p in _vendored_blender_candidates():
+        return p
     on_path = shutil.which("blender")
     if on_path:
         return Path(on_path)
@@ -99,7 +125,12 @@ def discover_blender() -> Path | None:
 def check_blender(effective_cfg: dict) -> CheckResult:
     configured = (effective_cfg.get("blender") or {}).get("binary")
     if configured:
-        if Path(configured).is_file():
+        # Resolve ``~`` / project-relative values (e.g. ./vendor/blender/blender)
+        # the same way the runtime does, so doctor validates what will actually run.
+        from .tools._blender_subprocess import resolve_blender_path
+        configured = resolve_blender_path(configured)
+        # is_file() for a real path, OR a bare name resolvable on PATH.
+        if Path(configured).is_file() or shutil.which(configured):
             try:
                 out = subprocess.run(
                     [configured, "--version"], capture_output=True, text=True, encoding="utf-8", timeout=15

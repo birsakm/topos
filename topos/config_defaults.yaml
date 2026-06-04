@@ -63,7 +63,11 @@ backends:
     timeout_s: 600
 
 blender:
-  binary: null                   # must be set; `topos doctor` will help auto-detect
+  # Path to the Blender binary. Accepts an absolute path, a bare name on PATH
+  # ("blender"), a ~ path, OR a project-relative path to a vendored install
+  # ("./vendor/blender/blender") that resolves against the repo root from any
+  # cwd. `topos doctor` auto-detects (a project-vendored ./vendor/blender wins).
+  binary: null
   hot_pool:
     enabled: false               # default off; opt in per-project
     max_procs: 2

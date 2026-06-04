@@ -92,6 +92,17 @@ Agents **never talk to each other**. They collaborate by writing into a shared `
 # Install
 pip install -e .
 
+# Install Blender (5.0+). Either use a system Blender on PATH, or vendor a
+# self-contained copy under the project so the checkout pins its own version:
+#   mkdir -p vendor && cd vendor
+#   curl -LO https://download.blender.org/release/Blender5.0/blender-5.0.0-linux-x64.tar.xz
+#   tar xf blender-5.0.0-linux-x64.tar.xz && mv blender-5.0.0-linux-x64 blender
+#   cd ..
+# `vendor/` is gitignored (~300MB, never committed). `topos doctor` then
+# auto-detects ./vendor/blender/blender; or pin it explicitly with a relative
+# path that resolves from any cwd:
+#   topos config set blender.binary ./vendor/blender/blender
+
 # Check environment (Python / claude CLI / Blender / config)
 topos doctor
 

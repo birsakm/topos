@@ -36,3 +36,8 @@ uv.log
 *.swp
 .DS_Store
 .claude/
+
+# Project-vendored Blender (self-contained install; ~300MB, never committed)
+/vendor/
+/blender/
+/blender-*/
