@@ -63,10 +63,11 @@ backends:
     timeout_s: 600
 
 blender:
-  # Path to the Blender binary. Accepts an absolute path, a bare name on PATH
-  # ("blender"), a ~ path, OR a project-relative path to a vendored install
-  # ("./vendor/blender/blender") that resolves against the repo root from any
-  # cwd. `topos doctor` auto-detects (a project-vendored ./vendor/blender wins).
+  # Path to the Blender binary. Two forms only:
+  #   - absolute path (e.g. /opt/blender/blender), used as-is;
+  #   - project-relative path to a vendored install (./vendor/blender/blender),
+  #     resolved against the repo root so it works from any cwd.
+  # `topos doctor` auto-detects (a project-vendored ./vendor/blender wins).
   binary: null
   hot_pool:
     enabled: false               # default off; opt in per-project

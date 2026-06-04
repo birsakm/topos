@@ -40,16 +40,14 @@ blender:
     idle_kill_s: 600                   # kill an idle pool process after this many seconds
 ```
 
-`blender.binary` accepts four forms:
+`blender.binary` accepts exactly two forms:
 
 | value | resolves to |
 |---|---|
 | `/opt/blender/blender` | absolute path, used as-is |
-| `blender` | bare name → looked up on `PATH` |
-| `~/blender/blender` | `~` expanded to `$HOME` |
-| `./vendor/blender/blender` | **project-relative** — resolved against cwd then the repo root, so a vendored Blender works from any cwd |
+| `./vendor/blender/blender` | **project-relative** — resolved against the repo root, so a vendored Blender works from any cwd |
 
-`topos doctor` auto-detects in priority order: **project-vendored** (`./vendor/blender/blender`, `./blender/blender`, `./vendor/blender-*/blender`) → `PATH` → common system locations → `$HOME`. Vendoring Blender under `./vendor/` (gitignored) keeps a checkout self-contained and version-pinned.
+`topos doctor` auto-detects in priority order: **project-vendored** (`./vendor/blender/blender`, `./blender/blender`, `./vendor/blender-*/blender`) → `PATH` → common system locations → `$HOME`, and suggests the absolute path it finds. Vendoring Blender under `./vendor/` (gitignored) keeps a checkout self-contained and version-pinned.
 
 ### `visual_critic`
 

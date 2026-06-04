@@ -11,7 +11,6 @@ contract tools rely on for ``BlenderResult.artifacts``.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,28 +38,15 @@ def _repo_root() -> Path:
 
 
 def resolve_blender_path(raw: str) -> str:
-    """Normalise a configured blender-binary value into a usable command.
+    """Normalise a configured blender-binary value. Exactly two forms:
 
-    - ``~`` is expanded.
-    - An absolute path is returned as-is.
-    - A bare name with no path separator (e.g. ``"blender"``) is returned
-      untouched so the OS ``PATH`` resolves it.
-    - A RELATIVE path (e.g. ``"./vendor/blender/blender"``) is resolved against
-      the cwd first, then the repo root; the first existing match wins. If none
-      exist, the repo-root-relative path is returned so the downstream error
-      names a concrete location. This is what lets a project-vendored Blender be
-      configured with a relative path and work from any cwd.
+    - an ABSOLUTE path is used as-is;
+    - anything else is PROJECT-RELATIVE and resolved against the repo root
+      (e.g. ``./vendor/blender/blender``), so a vendored Blender works from
+      any cwd.
     """
-    p = Path(raw).expanduser()
-    if p.is_absolute():
-        return str(p)
-    if os.sep not in raw and "/" not in raw:
-        return raw  # bare name → leave for PATH lookup
-    for base in (Path.cwd(), _repo_root()):
-        cand = (base / p).resolve()
-        if cand.is_file():
-            return str(cand)
-    return str((_repo_root() / p).resolve())
+    p = Path(raw)
+    return str(p if p.is_absolute() else (_repo_root() / p).resolve())
 
 
 def resolve_blender_binary(explicit: str | None = None) -> str:

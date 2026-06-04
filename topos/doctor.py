@@ -128,9 +128,8 @@ def check_blender(effective_cfg: dict) -> CheckResult:
         # Resolve ``~`` / project-relative values (e.g. ./vendor/blender/blender)
         # the same way the runtime does, so doctor validates what will actually run.
         from .tools._blender_subprocess import resolve_blender_path
-        configured = resolve_blender_path(configured)
-        # is_file() for a real path, OR a bare name resolvable on PATH.
-        if Path(configured).is_file() or shutil.which(configured):
+        configured = resolve_blender_path(configured)  # ./vendor/... → absolute
+        if Path(configured).is_file():
             try:
                 out = subprocess.run(
                     [configured, "--version"], capture_output=True, text=True, encoding="utf-8", timeout=15
