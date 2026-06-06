@@ -93,6 +93,8 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--resolution", type=int, default=512)
     p.add_argument("--engine", default="workbench", choices=["workbench", "eevee", "cycles"])
     p.add_argument("--coloring", default="as_authored", choices=["as_authored", "palette"])
+    p.add_argument("--transparent", action="store_true",
+                   help="render with an alpha background (film_transparent + RGBA PNG)")
     p.add_argument("--view-prefix", default="view_")
     p.add_argument("--single-view", default="front_low",
                    help="for --mode single: which octant view label to use")
@@ -308,6 +310,11 @@ def _ensure_pbr_materials(mesh_objs, *, coloring: str) -> None:
 
 def _configure_engine(args, mesh_objs) -> None:
     scene = bpy.context.scene
+    if getattr(args, "transparent", False):
+        # Render with an alpha background instead of the neutral world bg —
+        # used for showcase turntable GIFs that sit on a README of any theme.
+        scene.render.film_transparent = True
+        scene.render.image_settings.color_mode = "RGBA"
     if args.engine == "workbench":
         scene.render.engine = "BLENDER_WORKBENCH"
         scene.display.shading.light = "STUDIO"

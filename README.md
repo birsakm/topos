@@ -1,19 +1,27 @@
 <p align="center">
-  <img src="docs/assets/opentopos_logo.png" alt="OpenTopos" width="460">
+  <img src="docs/assets/opentopos_logo.png" alt="OpenTopos" width="440">
+</p>
+
+<h3 align="center">Towards Agentic 3D Procedural Generation Without Human Feedback</h3>
+
+<p align="center">
+  <img src="docs/assets/demo_ferris.gif" width="340" alt="procedurally generated ferris wheel">
 </p>
 
 <p align="center">
-  <b>Coding agents write standalone Python that Blender runs to build 3D objects from scratch.</b><br>
-  The deliverable is a runnable, multi-file Python project — not a mesh blob, not a diffusion output.<br>
-  No mesh-prior models. No diffusion. No asset libraries. Every object is constructed one <code>bpy</code> call at a time.
+  A harness where a team of <b>coding agents</b> collaborate to write a <b>standalone, multi-file Python
+  project</b> that Blender runs to build a 3D object from scratch — geometry, articulation, and
+  <b>prompt-conditioned textures</b> — scored and repaired by a vision-model judge in a closed loop,
+  no human in the loop. The deliverable is runnable code, not a mesh blob: no mesh-prior models, no
+  diffusion, no asset libraries — every object is constructed one <code>bpy</code> call at a time.
 </p>
 
 <p align="center">
-  <img src="docs/assets/sample_ferris.png" width="240" alt="ferris wheel">
-  <img src="docs/assets/sample_optimus.png" width="240" alt="optimus prime">
-  <img src="docs/assets/sample_bicycle.png" width="240" alt="bicycle">
+  <img src="docs/assets/demo_optimus.gif" width="220" alt="optimus prime">
+  <img src="docs/assets/demo_bike.gif" width="220" alt="bicycle">
+  <img src="docs/assets/demo_cabinet.gif" width="220" alt="cabinet">
 </p>
-<p align="center"><sub>All built procedurally from a text prompt (+ optional reference image). The geometry IS Python you can read, edit, and re-run.</sub></p>
+<p align="center"><sub>Each built procedurally from a text prompt (+ optional reference image). The geometry IS Python you can read, edit, and re-run.</sub></p>
 
 ---
 
@@ -35,17 +43,31 @@ Coding agents write *into a real codebase*; Blender runs that codebase. Each par
 ```mermaid
 flowchart TD
     P["topos make 'a red bicycle' -i ref.png<br/>natural-language prompt + optional reference image"]
-    D["design agent<br/>writes src/design.json<br/>part list + per-part world-bbox contract"]
-    PA["part agents — run in parallel, 1 per part<br/>write src/parts/&lt;name&gt;.py<br/>loop: write → topos inspect → fix → re-inspect"]
-    B["build agent<br/>writes src/build.py<br/>composes every part, validates the bbox contract"]
-    J["joints agent<br/>writes src/joints.yaml — articulation"]
+    D["design agent → src/design.json<br/>part list + a world-bbox contract per part"]
+    P --> D
+    D -->|"fan out — one agent per part"| PA1
+    D --> PA2
+    D --> PAn
+    subgraph PAR ["N part agents run IN PARALLEL · each loops: write → topos inspect → fix"]
+      direction LR
+      PA1["part agent 1<br/>parts/frame.py"]
+      PA2["part agent 2<br/>parts/wheel.py"]
+      PAn["… part agent N<br/>parts/&lt;name&gt;.py"]
+    end
+    PA1 --> B
+    PA2 --> B
+    PAn --> B
+    B["build agent → src/build.py<br/>composes all N parts · validates every bbox contract"]
+    J["joints agent → src/joints.yaml — articulation"]
     BL["Blender runs the code headless<br/>multi-view render · GLB · URDF"]
-    JU["VLM judge scores the render vs the prompt + reference"]
+    JU{"VLM judge<br/>scores render vs prompt + reference"}
     O["outputs/&lt;slug&gt;/<br/>standalone Python project + artifacts"]
-    P --> D --> PA --> B --> J --> BL --> JU
-    JU -->|"score &lt; threshold: fix-loop"| PA
+    B --> J --> BL --> JU
+    JU -->|"score &lt; threshold — fix-loop re-runs only the failing parts"| PAR
     JU -->|pass| O
 ```
+
+> Independent parts are written **concurrently** — N part agents, N stateless Blender subprocesses, no shared state. The bbox contract in `design.json` is what keeps them aligned without talking to each other; the build agent validates each part's world bbox against it (5 mm tolerance).
 
 ## What you get on disk
 
