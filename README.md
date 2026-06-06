@@ -1,230 +1,152 @@
-# OpenTopos
+<p align="center">
+  <img src="docs/assets/opentopos-logo.png" alt="OpenTopos" width="460">
+</p>
 
-Unified, code-driven 3D object generation — **static/rigid + articulated + texture (incl. UV atlas)** in one framework. Merged from the former `topos3d` `master` and `articulated-objects` branches. The Python package and CLI remain `topos`; the repo and distribution are `opentopos`.
+<p align="center">
+  <b>Coding agents write standalone Python that Blender runs to build 3D objects from scratch.</b><br>
+  The deliverable is a runnable, multi-file Python project — not a mesh blob, not a diffusion output.<br>
+  No mesh-prior models. No diffusion. No asset libraries. Every object is constructed one <code>bpy</code> call at a time.
+</p>
 
-**TODO List**
-
-1: Prototype
-- [P0] [Slice A landed] Reoganize the prediction flow, constructing a DAG architecture using graph node to represent each agent step. Articulated single-object: `SubgraphTask` runtime expansion driven by `design.json` (ADR-0008, `docs/architecture-recursive-dag.md`). Scene / city tiers deferred to slices B & C.
-- [P0] Trajetories AutoAnalyzer. A Skill or other type to prompt coding agents to automatically analyze the failure mode of the generated 3D objects and potential things that can be improved.
-- [P1] Website frontend to visualize the step of each generated objects on how agents collaborate or work together to build a 3D objects.
-- [P1] Support image as input to do image-to-3D via procedural blender code.
-- [P1] Scale the scope from single objects (single static object or articulated objects) to 3D scene.
-- [P1] Support take .blend project file as supports and seek potential way to do reverse engineering for further data curation.
-- [P2] Support Three.js programming language.  
-
-**Code-driven, multi-agent 3D content generation — from scratch.**
-
-Topos lets coding agents (Claude via the `claude` CLI is the default; Codex and Gemini CLI backends are also wired up) collaborate with Blender, a VLM judge, and a planner to produce **standalone, multi-file Python projects** that build 3D assets and scenes. No mesh-prior models, no diffusion, no asset libraries — every object is constructed procedurally, one `bpy` call at a time, by an LLM that writes, runs, inspects renders, and fixes its own code in a loop.
-
-The ambition is a single coherent framework that scales along one axis — **complexity of the scene** — while keeping the same primitives:
-
-```
-  rigid object  →  articulated object  →  indoor / outdoor scene  →  city / world
-  (a chair)     →  (a drawer cabinet)   →  (a furnished room)      →  (a neighborhood)
-```
-
-Each level reuses the level below: a scene is a layout of articulated/rigid objects; a city is a layout of scenes. The agents, tools, judge, and fix-loop are shared infrastructure; what changes is the planner's DAG template and the domain-specific knowledge skills.
+<p align="center">
+  <img src="docs/assets/sample_ferris.png" width="240" alt="ferris wheel">
+  <img src="docs/assets/sample_optimus.png" width="240" alt="optimus prime">
+  <img src="docs/assets/sample_bicycle.png" width="240" alt="bicycle">
+</p>
+<p align="center"><sub>All built procedurally from a text prompt (+ optional reference image). The geometry IS Python you can read, edit, and re-run.</sub></p>
 
 ---
 
-## Why "code is truth"
+## What it actually does
 
-Most 3D generative pipelines emit meshes as the primary artifact. Topos emits **Python source code** as the primary artifact, and meshes / GLB / URDF / renders are derivative — regeneratable from the code, freely deletable. This buys three things:
+You give it a prompt. A team of coding agents (Claude / Gemini / Codex CLI) write a small Python project into `outputs/<slug>/src/` — a `design.json` part list, one `build_<part>()` file per part, a `build.py` that assembles them, and a `joints.yaml` for articulation. Blender runs that code **headless** to produce renders + a GLB + a URDF. A vision model judges the multi-view render; if it's below threshold a fix-loop edits the code and re-runs.
 
-- **Editability.** A human (or another agent) can open `src/parts/drawer.py` and change the drawer height by editing one line. No mesh surgery.
-- **Composition.** A scene that places ten cabinets just imports `build_cabinet()` ten times with different params. No re-generation of geometry.
-- **Standalone outputs.** After `topos freeze` (planned), each `outputs/<slug>/` runs in any Blender environment without the framework. The code is the deliverable; Topos is just the scaffolding that produced it.
-
----
-
-## Current status (2026-05-11)
-
-| Stage | What | Status |
-|---|---|---|
-| 0 | Smoke test (`blender --background` + claude CLI plumbing) | ✓ working |
-| 1 | **Rigid** single-object (e.g. a chair) | ✓ working, ~$0.30/run |
-| 2 | **Articulated** multi-part object (frame + drawer + handle, URDF joints) | ✓ working, ~$1.5–2.2/run, judge score ≥ 0.65 in single iter |
-| 3 | **Scene** (multi-object layout: furnished room, garden) | not started |
-| 4 | **City** (district-scale layout, repeated typologies) | far future |
-
-The cabinet example (`examples/articulated_drawer_cabinet/`) is the running benchmark. End-to-end it runs 6 agent tasks (design / 3 parts / build / joints) + 4 tool tasks (multi-view render / GLB / URDF / judge) in ~4–7 minutes wall time, producing a parseable URDF that loads cleanly in `trimesh` / `urdfpy` / Blender.
-
----
-
-## How it works in one screen
-
-```
-NL prompt or spec.yaml
-        │
-        ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Planner  →  plan.json (DAG of AgentTask | ToolTask)            │
-└─────────────────────────────────────────────────────────────────┘
-        │
-        ▼  topo-sorted, run in waves
-┌─────────────────────────────────────────────────────────────────┐
-│  01_agent_design      writes  src/design.json   (frozen contract)│
-│  02_agent_part_frame  writes  src/parts/frame.py                │
-│  03_agent_part_drawer writes  src/parts/drawer.py               │
-│  04_agent_part_handle writes  src/parts/handle.py               │
-│  05_agent_build       writes  src/build.py  (asserts bbox vs    │
-│                                              design.json ±5 mm) │
-│  06_agent_joints      writes  src/joints.yaml                   │
-│  07_tool_render_multiview  →  artifacts/object_render/view_*.png│
-│  08_tool_export_glb        →  artifacts/object.glb              │
-│  09_tool_export_urdf       →  artifacts/object.urdf + parts/    │
-│  10_tool_judge             →  trajectories/.../score.json       │
-└─────────────────────────────────────────────────────────────────┘
-        │
-        ▼  score < threshold?  →  auto-build a FIX99 agent task from
-                                  judge feedback; re-run downstream
-                                  (max_global_iters in iter_policy)
-```
-
-Agents **never talk to each other**. They collaborate by writing into a shared `outputs/<slug>/src/` workspace, programming against the frozen `design.json` contract that the design agent wrote first. The bbox-assertion in `build.py` is the cheap consistency check that catches drift between independently-generated parts.
-
----
-
-## Quickstart
+The point: **the code is the truth.** The mesh/GLB/URDF under `artifacts/` are derivative — delete them and re-run the Python to get them back. The output runs in any Blender without this framework.
 
 ```bash
-# Install
-pip install -e .
-
-# Install Blender (5.0+). Either use a system Blender on PATH, or vendor a
-# self-contained copy under the project so the checkout pins its own version:
-#   mkdir -p vendor && cd vendor
-#   curl -LO https://download.blender.org/release/Blender5.0/blender-5.0.0-linux-x64.tar.xz
-#   tar xf blender-5.0.0-linux-x64.tar.xz && mv blender-5.0.0-linux-x64 blender
-#   cd ..
-# `vendor/` is gitignored (~300MB, never committed). `topos doctor` then
-# auto-detects ./vendor/blender/blender; or pin it explicitly with a relative
-# path that resolves from any cwd:
-#   topos config set blender.binary ./vendor/blender/blender
-
-# Check environment (Python / claude CLI / Blender / config)
-topos doctor
-
-# Scaffold a workspace from a worked example
-topos init my_cabinet --domain articulated --from-example articulated_drawer_cabinet
-
-# Run the DAG
-topos run my_cabinet
-
-# Inspect cost & token breakdown
-topos cost my_cabinet --by-model
-
-# (Planned) one-shot from a natural-language prompt
-topos make "a small wooden nightstand with two drawers and brass pulls"
+topos make "a turquoise hybrid bicycle with flat handlebars" -i bicycle.webp
+# → outputs/turquoise_hybrid_bicycle/  (src/ Python project + artifacts/ renders+GLB+URDF)
 ```
 
-Outputs land under `outputs/my_cabinet/`:
+## How it works
 
-```
-outputs/my_cabinet/
-├── src/                    # agent-written Python — the deliverable
-│   ├── design.json         # frozen part/joint contract
-│   ├── parts/
-│   │   ├── frame.py
-│   │   ├── drawer.py
-│   │   └── handle.py
-│   ├── build.py            # imports + composes parts in a Blender scene
-│   └── joints.yaml         # URDF-style link + joint spec
-├── artifacts/              # derivative — view_*.png, object.glb, object.urdf
-└── trajectories/           # per-task transcripts, costs, judge scores per iter
-```
+Coding agents write *into a real codebase*; Blender runs that codebase. Each part agent can `topos inspect` its own geometry mid-task — build it headless, measure the bounding box, render a preview, and fix the code before handing in (instead of coding blind).
 
----
-
-## Architecture in one screen
-
-```
-L7  CLI                 topos doctor | config | init | run | cost | make*
-L6  Domain workflows    rigid · articulated · scene* · city*
-L5  Orchestrator        DAG runner (AgentTask | ToolTask | SubgraphTask*)
-                        + iter_policy fix-loop
-L4  Critic              Critic protocol · ClaudeVisionCritic (default)
-                        · rubric YAML decoupled from code
-L3  Knowledge layers    skills/topos_*/SKILL.md (agent-invoked capability bundles)
-                        bpy_docs/ (local Blender API RAG index)
-L2  Tools               render_multiview · render_part · verify_parts
-                        · generate_texture_image · export_glb · export_urdf · judge
-L1  Agent backends      AgentBackend protocol
-                        · ClaudeCLIBackend (default; pinned model)
-                        · CodexCLIBackend, GeminiCLIBackend (implemented)
-L0  Substrate           Workspace · Blender runtime (stateless + hot-pool stub)
-                        · process · logging · layered config
+```mermaid
+flowchart TD
+    P["topos make 'a red bicycle' -i ref.png<br/>natural-language prompt + optional reference image"]
+    D["design agent<br/>writes src/design.json<br/>part list + per-part world-bbox contract"]
+    PA["part agents — run in parallel, 1 per part<br/>write src/parts/&lt;name&gt;.py<br/>loop: write → topos inspect → fix → re-inspect"]
+    B["build agent<br/>writes src/build.py<br/>composes every part, validates the bbox contract"]
+    J["joints agent<br/>writes src/joints.yaml — articulation"]
+    BL["Blender runs the code headless<br/>multi-view render · GLB · URDF"]
+    JU["VLM judge scores the render vs the prompt + reference"]
+    O["outputs/&lt;slug&gt;/<br/>standalone Python project + artifacts"]
+    P --> D --> PA --> B --> J --> BL --> JU
+    JU -->|"score &lt; threshold: fix-loop"| PA
+    JU -->|pass| O
 ```
 
-Closed-for-modification core; new backends / critics / rubrics / skills / tools / domains / prompts go in their respective dirs. Full detail in [`docs/architecture.md`](docs/architecture.md).
-
----
-
-## Roadmap
-
-Near-term (next chunks queued):
-
-- **Texture stage refinement** — `ImageGenBackend` (Gemini Nano Banana) is wired and UV-bake works for procedural materials; image-conditioned per-part textures are next.
-- **Furniture-hardware recipes** beyond the current `topos_furniture_hardware` skill (hinges, drawer rails) so parts stop looking like primitive-cube assemblies.
-
-Stage 3 onwards:
-
-- **Scene domain** — `SubgraphTask` fanout, layout constraints, multi-object collision/placement, indoor + outdoor.
-- **City domain** — repeated scene typologies, road graphs, far-future.
-- **bpy docs RAG** — auto-index the installed Blender's Python docs so agents can look up API surface they don't remember.
-
-`topos freeze` (project portability) is also on the list but blocked on Stage 3 stabilizing first.
-
----
-
-## Repo layout
+## What you get on disk
 
 ```
-topos/
-├── topos/              # framework package
-│   ├── cli.py
-│   ├── workspace.py
-│   ├── backends/       # claude / codex / gemini agent backends
-│   ├── orchestrator/   # plan schema + DAG runner + tasks
-│   ├── blender/        # subprocess runtime + render / export wrappers
-│   ├── tools/          # tool registry (render_multiview, render_part, export_glb, judge, ...)
-│   ├── agents/visual_critic/  # Critic protocol + ClaudeVisionCritic / CLI critics / API critics
-│   ├── rubrics/        # articulated_object_v1.yaml, part_shape_v1.yaml
-│   ├── prompts/        # system + per-domain Jinja2 templates
-│   ├── skills/         # topos_part_geometry / topos_joints_creator / ...
-│   └── urdf.py         # URDF writer; vendored into frozen projects on `topos freeze`
-├── examples/
-│   ├── articulated_drawer_cabinet/
-│   ├── articulated_rocket/
-│   ├── jet_engine_v4/
-│   └── optimus_prime_bay_v1/
-├── docs/
-│   ├── architecture.md
-│   ├── extending.md
-│   ├── config.md
-│   ├── lessons.md      # append-only running log of gotchas
-│   └── decisions/      # ADRs (0001-code-as-truth, 0002-stateless-blender, ...)
-├── tests/              # 38 unit + 1 integration (real claude + blender, ~$0.30)
-└── CLAUDE.md           # standing context for Claude sessions in this repo
+outputs/<slug>/
+├── src/                    # the deliverable — runs in any Blender, zero framework deps
+│   ├── design.json         #   part list + per-part world-bbox contract (5mm tolerance)
+│   ├── parts/<name>.py     #   one build_<name>() per part — pure geometry
+│   ├── build.py            #   composes all parts into the assembled scene
+│   └── joints.yaml         #   articulation (URDF joint tree)
+├── artifacts/              # derivative — freely deletable, regenerated from src/
+│   ├── object_render/      #   8-view EEVEE renders
+│   ├── object.glb          #   whole-scene GLB (trimesh/Three.js loadable)
+│   └── object.urdf         #   valid URDF (urdfpy/RViz/Webots loadable)
+├── trajectories/           # full per-task transcript + cost + judge score
+└── run_report.json         # scores, cost, token + time breakdown
 ```
 
----
+A static/rigid object is just an articulated one whose joints are all `fixed` — same pipeline either way.
 
-## Pointers
+## Install
 
-- **Architecture detail** — [`docs/architecture.md`](docs/architecture.md)
-- **Adding a backend / judge / tool / domain** — [`docs/extending.md`](docs/extending.md)
-- **Config schema (layered: defaults < user < repo < env)** — [`docs/config.md`](docs/config.md)
-- **Architecture decisions** — [`docs/decisions/`](docs/decisions/)
-  - 0001 code-as-truth · 0002 stateless-blender · 0003 claude-cli backend
-  - 0004 recipe-injection · 0005 modeling-vs-rendering separation
-- **Gotchas & version-specific quirks** — [`docs/lessons.md`](docs/lessons.md)
+```bash
+git clone https://github.com/gaoypeng/opentopos && cd opentopos
+pip install -e .                      # installs the `topos` CLI
 
----
+# Blender (5.0+). Either a system Blender on PATH, OR vendor one under the repo
+# so the checkout pins its own version (vendor/ is gitignored, ~300MB):
+mkdir -p vendor && cd vendor
+curl -LO https://download.blender.org/release/Blender5.0/blender-5.0.0-linux-x64.tar.xz
+tar xf blender-5.0.0-linux-x64.tar.xz && mv blender-5.0.0-linux-x64 blender && cd ..
 
-## Status disclaimer
+# A coding-agent CLI. Claude is the default backend:
+#   install the `claude` CLI (https://claude.com/claude-code) and log in.
+#   Gemini and Codex CLI backends are also wired up.
 
-This is research-stage software (v0.0.1). The rigid and articulated pipelines work reliably; everything above Stage 2 is design-on-paper. The API surface, plan.json schema, and skill format will change. Don't depend on the standalone-freeze invariant yet — `topos freeze` isn't implemented.
+# Optional: a Gemini API key for image-conditioned textures (Nano Banana).
+topos config set image_gen.gemini.api_key <key>   # https://aistudio.google.com/app/apikey
 
-\* = planned, not yet shipped.
+topos doctor                          # verifies python / agent CLI / Blender / config
+```
+
+`topos doctor` auto-detects Blender (vendored `./vendor/blender/` wins over a system one). `blender.binary` accepts an absolute path or a project-relative `./vendor/blender/blender`.
+
+## Usage
+
+```bash
+# THE entry point: prompt (+ optional reference images) → workspace → auto-run
+topos make "a 6-drawer steel tool cabinet"
+topos make "Optimus Prime, standing" -i optimus.png --slug optimus
+
+# Re-run an existing workspace's plan (e.g. after editing src/ by hand)
+topos run optimus
+
+# Pick the coding-agent backend per run (default: claude). See `topos make --help`.
+# Inspect a build's geometry yourself (or what the part agents call mid-task):
+topos inspect optimus                 # whole assembly: per-part bbox, overlaps, contract
+topos inspect optimus --part Head     # one part in isolation + a preview PNG
+
+# Cost / token / time breakdown of the last run
+topos cost optimus --by-model
+
+# List + install the agent skill bundles
+topos skill list
+```
+
+### Choosing a backend
+
+| backend | model | notes |
+|---|---|---|
+| `claude` (default) | Opus / Sonnet via the `claude` CLI | strongest geometry; subscription or API key |
+| `gemini` | `gemini-3.x-flash` via the `gemini` CLI | fast + cheap; great on regular structures |
+| `codex` | via the `codex` CLI | OpenAI models |
+
+The whole pipeline (coding agents, the VLM judge, the texture image-gen) is swappable per backend.
+
+## The inspect loop — agents see their own geometry
+
+The recurring failure mode of "LLM writes bpy code blind" is wrong proportions, stub limbs, and parts that float or interpenetrate — none of which the model notices until the final render. `topos inspect` closes that loop **inside the agent's turn**: it builds the geometry headless, measures every part's world bounding box, flags overlaps / floating / degenerate parts / contract drift, and renders a preview the agent can look at. Part and build agents are taught (via the `topos_geometry_inspect` skill) to write → inspect → fix → re-inspect before handing in.
+
+It is OpenTopos-native and stateless — same idea as a live Blender-MCP session, but the artifact stays reproducible code, and N parts inspect in parallel.
+
+## Architecture
+
+```
+L7 CLI            topos make · run · inspect · doctor · config · cost · skill
+L6 Domain         rigid / articulated  (plan.json template + rubric + examples)
+L5 Orchestrator   DAG runner (agent / tool / subgraph tasks), fix-loop, runtime fan-out
+L4 Critic         VLM judge; rubric YAML decoupled from code
+L3 Knowledge      agent skill bundles (topos/skills/) · local Blender API index (bpy_docs)
+L2 Tools          @tool capabilities: render · export_glb · export_urdf · judge · inspect ...
+L1 Agent backends ClaudeCLI (default) · GeminiCLI · CodexCLI
+L0 Substrate      Workspace · stateless Blender runtime · config (defaults < user < repo < env)
+```
+
+Design rationale lives in [`docs/decisions/`](docs/decisions) (ADRs): code-as-truth, stateless-Blender, the design.json bbox-contract, three-layer prompts. Deeper reference: [`docs/architecture.md`](docs/architecture.md), [`docs/extending.md`](docs/extending.md), [`docs/config.md`](docs/config.md).
+
+## Status
+
+Articulated objects work end-to-end (design → parts → build → joints → render/GLB/URDF → judge → fix-loop). The output is multi-file Python with bbox-contract validation; per-part + whole-scene GLB and a valid URDF, all parseable by trimesh / urdfpy / Blender. Procedural geometry currently caps at clean blocky forms — dense mechanical detail is the active frontier.
+
+```bash
+pytest -m 'not integration'           # fast unit suite (no Blender / no LLM)
+```
