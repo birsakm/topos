@@ -21,12 +21,14 @@ TT = REPO / "scripts/glb_turntable.py"
 OUT = REPO / "docs/assets"
 BLENDER = resolve_blender_binary()
 
-# label -> output slug whose artifacts/object.glb we render
+# label -> (output slug whose artifacts/object.glb we render, starting azimuth)
 CASES = {
-    "ferris":  "ferris_wheel_v3",
-    "optimus": "optimus_opus",
-    "bike":    "bike_gemini4",
-    "cabinet": "cab_a9_palace3",
+    "ferris":  ("ferris_gemini",  90),   # gemini build has the multi-colored cabins; face-on start
+    "optimus": ("optimus_gemini", 20),
+    "bike":    ("bike_gemini4",   120),  # 3/4 side profile, not head-on
+    "cabinet": ("cab_a9_palace3", 0),
+    "stool":   ("stool_tex",      25),
+    "jet":     ("jet_engine_v4",  35),
 }
 
 N_FRAMES = 30
@@ -45,7 +47,7 @@ def _frame_to_p(path: str):
     return p
 
 
-def render(label: str, slug: str) -> None:
+def render(label: str, slug: str, yaw0: float = 0.0) -> None:
     glb = REPO / "outputs" / slug / "artifacts" / "object.glb"
     if not glb.is_file():
         print(f"[{label}] no GLB at {glb}", flush=True); return
@@ -57,6 +59,7 @@ def render(label: str, slug: str) -> None:
         BLENDER, "--background", "--python", str(TT), "--",
         "--glb", str(glb), "--out", str(frames_dir),
         "--frames", str(N_FRAMES), "--res", str(RENDER_RES), "--engine", "cycles",
+        "--yaw0", str(yaw0),
     ]
     print(f"[{label}] rendering {slug} (cycles, {RENDER_RES}px x{N_FRAMES}) ...", flush=True)
     r = subprocess.run(cmd, cwd=str(REPO), capture_output=True, text=True, timeout=1800)
@@ -73,7 +76,8 @@ def render(label: str, slug: str) -> None:
 def main():
     for label in (sys.argv[1:] or list(CASES)):
         if label in CASES:
-            render(label, CASES[label])
+            slug, yaw0 = CASES[label]
+            render(label, slug, yaw0)
 
 
 if __name__ == "__main__":

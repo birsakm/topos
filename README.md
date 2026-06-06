@@ -4,9 +4,14 @@
 
 <h3 align="center">Towards Agentic 3D Procedural Generation Without Human Feedback</h3>
 
-<p align="center">
-  <img src="docs/assets/demo_ferris.gif" width="340" alt="procedurally generated ferris wheel">
-</p>
+<table align="center"><tr>
+<td><img src="docs/assets/demo_ferris.gif" width="195" alt="ferris wheel"></td>
+<td><img src="docs/assets/demo_optimus.gif" width="195" alt="optimus prime"></td>
+<td><img src="docs/assets/demo_bike.gif" width="195" alt="bicycle"></td>
+<td><img src="docs/assets/demo_cabinet.gif" width="195" alt="cabinet"></td>
+</tr></table>
+
+<p align="center"><sub>Each built procedurally from a text prompt (+ optional reference image). The geometry IS Python you can read, edit, and re-run.</sub></p>
 
 <p align="center">
   A harness where a team of <b>coding agents</b> collaborate to write a <b>standalone, multi-file Python
@@ -16,12 +21,8 @@
   diffusion, no asset libraries — every object is constructed one <code>bpy</code> call at a time.
 </p>
 
-<p align="center">
-  <img src="docs/assets/demo_optimus.gif" width="220" alt="optimus prime">
-  <img src="docs/assets/demo_bike.gif" width="220" alt="bicycle">
-  <img src="docs/assets/demo_cabinet.gif" width="220" alt="cabinet">
-</p>
-<p align="center"><sub>Each built procedurally from a text prompt (+ optional reference image). The geometry IS Python you can read, edit, and re-run.</sub></p>
+> [!NOTE]
+> **OpenTopos is a work-in-progress research preview.** It's under active development — expect rough edges, sharp changes, and geometry that doesn't always land. Found a bug or have an idea? Please [open an issue](https://github.com/gaoypeng/opentopos/issues) — feedback is very welcome.
 
 ---
 

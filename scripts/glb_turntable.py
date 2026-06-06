@@ -21,6 +21,7 @@ ap.add_argument("--frames", type=int, default=30)
 ap.add_argument("--res", type=int, default=960)
 ap.add_argument("--engine", default="cycles", choices=["cycles", "eevee"])
 ap.add_argument("--elev", type=float, default=10.0, help="camera elevation degrees")
+ap.add_argument("--yaw0", type=float, default=0.0, help="starting azimuth offset (deg)")
 args = ap.parse_args(argv)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -118,7 +119,7 @@ else:
 os.makedirs(args.out, exist_ok=True)
 N = args.frames
 for i in range(N):
-    target.rotation_euler[2] = math.radians(360.0 * i / N)
+    target.rotation_euler[2] = math.radians(args.yaw0 + 360.0 * i / N)
     scene.render.filepath = os.path.join(args.out, f"frame_{i:04d}.png")
     bpy.ops.render.render(write_still=True)
     print(f"[glb_turntable] {i + 1}/{N}", flush=True)
