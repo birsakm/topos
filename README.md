@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/opentopos-logo.png" alt="OpenTopos" width="460">
+  <img src="docs/assets/opentopos_logo.png" alt="OpenTopos" width="460">
 </p>
 
 <p align="center">
