@@ -25,6 +25,7 @@ def test_subgraph_task_loads(tmp_path: Path):
             "kind": "subgraph",
             "expand_from": "src/design.json",
             "expansion_kind": "articulated_parts",
+            "backend": "gemini",
             "deps": ["01_design"],
         },
     ])
@@ -36,6 +37,7 @@ def test_subgraph_task_loads(tmp_path: Path):
     assert sg.id == "02_subgraph_parts"
     assert sg.expand_from == "src/design.json"
     assert sg.expansion_kind == "articulated_parts"
+    assert sg.backend == "gemini"
     assert sg.deps == ["01_design"]
     assert sg.kind == "subgraph"
 

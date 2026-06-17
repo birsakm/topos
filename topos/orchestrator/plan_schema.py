@@ -67,6 +67,7 @@ class _SubgraphTaskModel(BaseModel):
     kind: Literal["subgraph"]
     expand_from: str
     expansion_kind: str
+    backend: str = "claude"
     deps: list[str] = []
     timeout_s: int = 60
 
@@ -108,6 +109,7 @@ class Plan(BaseModel):
                     id=t.id,
                     expand_from=t.expand_from,
                     expansion_kind=t.expansion_kind,
+                    backend=t.backend,
                     deps=list(t.deps),
                     timeout_s=t.timeout_s,
                 ))

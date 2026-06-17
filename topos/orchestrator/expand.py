@@ -170,7 +170,12 @@ def build_children(
                 f"subgraph {subgraph.id}: expand_from is not valid JSON: {path}: {e}"
             ) from None
     fn = get_expander(subgraph.expansion_kind)
-    return fn(subgraph, workspace_root=workspace_root, design_doc=design_doc)
+    return fn(
+        subgraph,
+        workspace_root=workspace_root,
+        design_doc=design_doc,
+        backend=subgraph.backend,
+    )
 
 
 # --- articulated_parts -----------------------------------------------------

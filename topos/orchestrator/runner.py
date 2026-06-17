@@ -916,6 +916,7 @@ class Runner:
                 "id": t.id, "kind": "subgraph",
                 "expand_from": t.expand_from,
                 "expansion_kind": t.expansion_kind,
+                "backend": t.backend,
                 "deps": list(t.deps), "timeout_s": t.timeout_s,
             }
         raise TypeError(f"cannot serialize task of type {type(t).__name__}")

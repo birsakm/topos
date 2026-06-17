@@ -31,11 +31,12 @@ def _ws(tmp_path: Path, *, with_prompts: dict[str, str] | None = None) -> Path:
     return tmp_path
 
 
-def _subgraph(deps: list[str] | None = None) -> SubgraphTask:
+def _subgraph(deps: list[str] | None = None, *, backend: str = "claude") -> SubgraphTask:
     return SubgraphTask(
         id="02_subgraph_parts",
         expand_from="src/design.json",
         expansion_kind="articulated_parts",
+        backend=backend,
         deps=deps or ["01_design"],
     )
 
@@ -164,6 +165,17 @@ def test_expand_hardware_skill_for_handle(tmp_path: Path):
     handle_t = by_id["02_subgraph_parts__02_agent_part_handle"]
     assert "topos_furniture_hardware" not in frame_t.skills
     assert "topos_furniture_hardware" in handle_t.skills
+
+
+def test_expand_children_inherit_subgraph_backend(tmp_path: Path):
+    ws = _ws(tmp_path, with_prompts={"extras_frame.md": "(frame)"})
+    design = _make_design([
+        {"name": "Frame", "world_xyz": [0, 0, 0], "world_extents": [1, 1, 1]},
+    ])
+    tasks = build_children(_subgraph(backend="gemini"), workspace_root=ws, design_doc=design)
+    agent_tasks = [t for t in tasks if isinstance(t, AgentTask)]
+    assert len(agent_tasks) == 1
+    assert agent_tasks[0].backend == "gemini"
 
 
 def test_expand_mechanical_skill_for_drivetrain(tmp_path: Path):

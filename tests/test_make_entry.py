@@ -88,3 +88,18 @@ def test_make_warns_on_missing_image_but_succeeds(tmp_path):
     assert "not found" in res.output
     # workspace still created, just no references dir
     assert (tmp_path / "boxy" / "plan.json").is_file()
+
+
+def test_make_backend_override_writes_gemini_plan(tmp_path):
+    res = runner.invoke(
+        app,
+        ["make", "a cabinet", "--backend", "gemini", "--no-run", "--slug", "cab_g", "--base", str(tmp_path)],
+    )
+    assert res.exit_code == 0, res.output
+
+    plan = json.loads((tmp_path / "cab_g" / "plan.json").read_text())
+    by_id = {t["id"]: t for t in plan["tasks"]}
+    assert by_id["01_agent_design"]["backend"] == "gemini"
+    assert by_id["02_subgraph_parts"]["backend"] == "gemini"
+    assert by_id["03_agent_build"]["backend"] == "gemini"
+    assert by_id["04_agent_joints"]["backend"] == "gemini"

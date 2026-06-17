@@ -8,6 +8,8 @@ needs nothing more than the project name.
 
 from __future__ import annotations
 
+from .. import config as cfg
+
 
 _SKILL_BY_TASK = {
     # Design agent: pure design.json author. Doesn't write Python so no bpy_docs;
@@ -28,7 +30,7 @@ _SKILL_BY_TASK = {
 }
 
 
-def generate_plan_articulated(project: str, prompt: str) -> dict:
+def generate_plan_articulated(project: str, prompt: str, *, backend: str | None = None) -> dict:
     """Build a plan.json dict for an articulated project named ``project``.
 
     ``prompt`` is the user's request, inlined directly into the design agent's
@@ -44,6 +46,7 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
     The build / joints / asm-tool tasks reference the subgraph id in their
     deps; the subgraph completes when all its dynamic children resolve.
     """
+    backend = backend or ((cfg.load_effective_config().get("backends") or {}).get("default")) or "claude"
     tasks: list[dict] = []
 
     # 01_agent_design — reads the inlined prompt, writes src/design.json.
@@ -55,7 +58,7 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
     tasks.append({
         "id": "01_agent_design",
         "kind": "agent",
-        "backend": "claude",
+        "backend": backend,
         "goal_template": "topos:articulated/designer.md.j2",
         "goal_params": {"prompt": prompt},
         "skills": _SKILL_BY_TASK["design"],
@@ -82,6 +85,7 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
         "kind": "subgraph",
         "expand_from": "src/design.json",
         "expansion_kind": "articulated_parts",
+        "backend": backend,
         "deps": ["01_agent_design"],
     })
 
@@ -91,7 +95,7 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
     tasks.append({
         "id": "03_agent_build",
         "kind": "agent",
-        "backend": "claude",
+        "backend": backend,
         "deps": [SUBGRAPH_ID],
         "goal_file": "topos:articulated/builder.md",
         "skills": _SKILL_BY_TASK["build"],
@@ -107,7 +111,7 @@ def generate_plan_articulated(project: str, prompt: str) -> dict:
     tasks.append({
         "id": "04_agent_joints",
         "kind": "agent",
-        "backend": "claude",
+        "backend": backend,
         "deps": ["01_agent_design"],
         "goal_file": "topos:articulated/joints_writer.md",
         "skills": _SKILL_BY_TASK["joints"],

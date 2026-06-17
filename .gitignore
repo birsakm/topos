@@ -35,9 +35,13 @@ uv.log
 .idea/
 *.swp
 .DS_Store
+Thumbs.db
 .claude/
 
 # Project-vendored Blender (self-contained install; ~300MB, never committed)
 /vendor/
 /blender/
 /blender-*/
+
+# Local input assets / scratch data
+/input/

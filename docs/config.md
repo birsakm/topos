@@ -11,6 +11,9 @@ Topos config is layered. Each layer overrides the prior. Read with `topos config
 
 Use `topos config set <key> <value> [--scope user|repo]` to write. Use `topos config edit [--scope user|repo]` to open in `$EDITOR`.
 
+For coding-agent selection, `topos make` uses `backends.default` unless you
+override it with `topos make --backend <name>`.
+
 ## Key reference
 
 ### `backends`

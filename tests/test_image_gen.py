@@ -618,3 +618,18 @@ def test_plan_generator_sets_expected_outputs_and_build_timeout():
     assert by_id["03_agent_build"]["expected_outputs"] == ["src/build.py"]
     assert by_id["04_agent_joints"]["expected_outputs"] == ["src/joints.yaml"]
     assert by_id["03_agent_build"]["timeout_s"] == 600
+
+
+def test_plan_generator_uses_config_default_backend(monkeypatch):
+    from topos.orchestrator.plan_generator import generate_plan_articulated
+
+    monkeypatch.setattr(
+        "topos.orchestrator.plan_generator.cfg.load_effective_config",
+        lambda: {"backends": {"default": "gemini"}},
+    )
+    plan = generate_plan_articulated("t", "a test articulated object")
+    by_id = {t["id"]: t for t in plan["tasks"]}
+    assert by_id["01_agent_design"]["backend"] == "gemini"
+    assert by_id["02_subgraph_parts"]["backend"] == "gemini"
+    assert by_id["03_agent_build"]["backend"] == "gemini"
+    assert by_id["04_agent_joints"]["backend"] == "gemini"

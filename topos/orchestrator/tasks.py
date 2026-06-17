@@ -66,6 +66,7 @@ class SubgraphTask:
     id: str
     expand_from: str          # workspace-relative path, e.g. "src/design.json"
     expansion_kind: str       # registry key in expand._EXPANDERS
+    backend: str = "claude"   # backend for any agent children the expander spawns
     deps: list[str] = field(default_factory=list)
     timeout_s: int = 60       # expansion is deterministic Python; safety only
     kind: Literal["subgraph"] = "subgraph"

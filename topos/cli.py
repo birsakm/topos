@@ -229,6 +229,10 @@ def make(
     ),
     slug: str = typer.Option(None, "--slug", help="Workspace slug (default: derived from the prompt)."),
     base: Path = typer.Option(None, "--base", help="Base dir for workspaces (default: ./outputs)."),
+    backend: str = typer.Option(
+        None, "--backend",
+        help="Coding-agent backend: claude | gemini | codex (default: backends.default config).",
+    ),
     no_run: bool = typer.Option(False, "--no-run", help="Create the workspace but don't auto-run."),
 ):
     """Build 3D content from a single prompt (+ optional reference images).
@@ -241,15 +245,19 @@ def make(
     `fixed` — still a connected single-root joint tree, never an empty joints
     array (a jointless multi-root design exports a degenerate URDF).
     """
-    from .backends.claude_cli import ClaudeCLIBackend
     from .orchestrator.plan_generator import generate_plan_articulated
+
+    if backend is not None and backend not in {"claude", "gemini", "codex"}:
+        raise typer.BadParameter(
+            f"unknown backend {backend!r}; choose from ['claude', 'codex', 'gemini']"
+        )
 
     slug = slug or _derive_slug(prompt)
     ws = Workspace.create(slug, "articulated", base=base, exist_ok=False)
     try:
         # The prompt is inlined into the design agent's goal — no intent.md file.
         n_imgs = _copy_reference_images(image, ws.root / "prompts")
-        plan = generate_plan_articulated(slug, prompt.strip())
+        plan = generate_plan_articulated(slug, prompt.strip(), backend=backend)
         ws.plan_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
     except Exception:
         shutil.rmtree(ws.root, ignore_errors=True)  # don't leave a half-written workspace
@@ -268,7 +276,7 @@ def make(
     from .orchestrator.plan_schema import load_plan
     from .orchestrator.runner import Runner
     plan_obj = load_plan(ws.plan_path)
-    backends = {"claude": ClaudeCLIBackend.from_config()}
+    backends = _make_backends_for_plan(plan_obj)
     runner = Runner(workspace=ws, plan=plan_obj, backends=backends,
                     event_sink=_maybe_event_sink())
     report = runner.run()

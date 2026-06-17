@@ -123,7 +123,12 @@ topos make "Optimus Prime, standing" -i optimus.png --slug optimus
 # Re-run an existing workspace's plan (e.g. after editing src/ by hand)
 topos run optimus
 
-# Pick the coding-agent backend per run (default: claude). See `topos make --help`.
+# Pick the coding-agent backend for a new workspace:
+topos make "a 6-drawer steel tool cabinet" --backend gemini
+
+# Or set the default once, then plain `topos make ...` will use it:
+topos config set backends.default gemini
+
 # Inspect a build's geometry yourself (or what the part agents call mid-task):
 topos inspect optimus                 # whole assembly: per-part bbox, overlaps, contract
 topos inspect optimus --part Head     # one part in isolation + a preview PNG
